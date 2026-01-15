@@ -1,8 +1,23 @@
+
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safe API Key access
+const getApiKey = () => {
+  try {
+    return (window as any).process?.env?.API_KEY || "";
+  } catch (e) {
+    return "";
+  }
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const generateProductDescription = async (productName: string, category: string): Promise<string> => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return "وصف رائع للمنتج (يرجى إعداد مفتاح API لتوليد وصف بالذكاء الاصطناعي).";
+  }
+
   try {
     const model = 'gemini-3-flash-preview';
     const prompt = `
