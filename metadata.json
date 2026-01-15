@@ -1,0 +1,8 @@
+{
+  "name": "Kimo App - كيمو",
+  "description": "تطبيق توصيل شامل في بئر العاتر يربط بين الزبائن، المتاجر، وأصحاب الدراجات.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
