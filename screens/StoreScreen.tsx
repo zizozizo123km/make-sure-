@@ -7,7 +7,7 @@ import {
   Sparkles, Package, Plus, Settings, MapPin, Store as StoreIcon, 
   ChevronRight, Upload, X, Loader2, Trash2, Edit, ArrowLeft, 
   ClipboardList, ShoppingBag, CheckCircle, Clock, LayoutDashboard,
-  TrendingUp, Users, DollarSign
+  TrendingUp, Users, DollarSign, Home
 } from 'lucide-react';
 import { BIR_EL_ATER_CENTER, formatCurrency } from '../utils/helpers';
 
@@ -295,10 +295,23 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                </div>
              ) : (
                <div className="bg-white p-8 rounded-4xl shadow-xl border border-primary-100 animate-scale-up">
-                  <div className="flex items-center gap-4 mb-8">
-                    <button onClick={() => setIsAddingProduct(false)} className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center"><ArrowLeft className="w-5 h-5"/></button>
-                    <h2 className="text-2xl font-black text-primary-800">إضافة منتج</h2>
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-4">
+                      <button onClick={() => setIsAddingProduct(false)} className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center text-primary-600 hover:bg-primary-100 transition-colors" title="رجوع للمنتجات">
+                        <ArrowLeft className="w-5 h-5"/>
+                      </button>
+                      <h2 className="text-2xl font-black text-primary-800">إضافة منتج</h2>
+                    </div>
+                    {/* زر الرجوع للرئيسية */}
+                    <button 
+                      onClick={() => { setView('DASHBOARD'); setIsAddingProduct(false); }} 
+                      className="flex items-center gap-2 bg-primary-50 text-primary-700 px-4 py-2.5 rounded-2xl font-bold text-sm hover:bg-brand-50 hover:text-brand-600 transition-all border border-transparent hover:border-brand-200"
+                    >
+                      <Home className="w-4 h-4" />
+                      <span>الرئيسية</span>
+                    </button>
                   </div>
+                  
                   <div className="space-y-6">
                     <div onClick={() => fileInputRef.current?.click()} className="w-full h-48 border-2 border-dashed border-primary-200 rounded-4xl flex flex-col items-center justify-center cursor-pointer hover:border-brand-500 transition-all overflow-hidden relative">
                        {newProduct.image ? <img src={newProduct.image} className="w-full h-full object-cover" /> : (
