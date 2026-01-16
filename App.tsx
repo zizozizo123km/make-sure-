@@ -19,6 +19,8 @@ const App: React.FC = () => {
   const [isLocked, setIsLocked] = useState(false);
   const [globalMessage, setGlobalMessage] = useState('');
 
+  const ADMIN_EMAIL = 'downloader@gmail.com';
+
   useEffect(() => {
     const handleHashChange = () => {
       setIsAdminPath(window.location.hash === '#admin');
@@ -130,14 +132,20 @@ const App: React.FC = () => {
     return <AdminScreen onExit={() => { window.location.hash = ''; setIsAdminPath(false); }} />;
   }
 
-  if (isLocked && auth.currentUser?.email !== 'downloader@gmail.com') {
+  // السماح للمسؤول فقط بتجاوز قفل النظام
+  if (isLocked && auth.currentUser?.email !== ADMIN_EMAIL) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center font-cairo">
         <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
           <Lock className="w-12 h-12 text-red-500" />
         </div>
         <h1 className="text-3xl font-black text-white mb-4">التطبيق مغلق حالياً</h1>
-        <p className="text-slate-400 font-bold max-w-xs mx-auto mb-8">نحن نقوم ببعض التحديثات الضرورية لتحسين تجربة كيمو.</p>
+        <p className="text-slate-400 font-bold max-w-xs mx-auto mb-8">نحن نقوم ببعض التحديثات الضرورية لتحسين تجربة كيمو. سنعود قريباً!</p>
+        {globalMessage && (
+           <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 text-orange-400 font-bold text-sm">
+             {globalMessage}
+           </div>
+        )}
       </div>
     );
   }

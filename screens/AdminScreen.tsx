@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, update, remove, set } from 'firebase/database';
@@ -38,10 +37,11 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [successAction, setSuccessAction] = useState<string | null>(null);
 
+  const ADMIN_EMAIL = 'downloader@gmail.com';
+
   useEffect(() => {
-    // مراقبة حالة المصادقة للتأكد من أننا نملك التوكن الصحيح
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user?.email === 'downloader@gmail.com') {
+      if (user?.email === ADMIN_EMAIL) {
         setIsAuthenticated(true);
       } else {
         setIsAuthenticated(false);
@@ -97,31 +97,39 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     setIsLoading(true);
     setError('');
     
+    // التحقق من البريد الإلكتروني قبل محاولة تسجيل الدخول
+    if (loginForm.email !== ADMIN_EMAIL) {
+      setError('هذا البريد غير مخول للدخول كمسؤول');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      if (loginForm.email === 'downloader@gmail.com') {
-        // تسجيل دخول حقيقي للحصول على صلاحيات Firebase
-        await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-        setIsAuthenticated(true);
-      } else {
-        setError('هذا البريد غير مخول للدخول كمسؤول');
-      }
+      // تسجيل الدخول الفعلي في Firebase للحصول على التوكن والصلاحيات
+      await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
+      setIsAuthenticated(true);
     } catch (err: any) {
-      console.error("Login Error:", err);
-      setError('بيانات الدخول غير صحيحة أو انتهت صلاحية الجلسة');
+      console.error("Admin Login Error:", err);
+      if (err.code === 'auth/wrong-password') {
+        setError('كلمة السر غير صحيحة');
+      } else if (err.code === 'auth/user-not-found') {
+        setError('حساب المسؤول غير موجود في قاعدة البيانات');
+      } else {
+        setError('خطأ في الاتصال أو بيانات غير صحيحة');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const broadcastMessage = async () => {
-    if (!auth.currentUser) {
-      alert('يجب تسجيل الدخول أولاً للقيام بهذه العملية');
+    if (!auth.currentUser || auth.currentUser.email !== ADMIN_EMAIL) {
+      alert('يجب تسجيل الدخول كمسؤول رئيسي للقيام بهذه العملية');
       return;
     }
 
     setLoadingAction('MSG');
     try {
-      // تحديث الرسالة في قاعدة البيانات
       await update(ref(db, 'app_settings'), { 
         globalMessage: appConfig.globalMessage,
         lastBroadcast: Date.now()
@@ -129,12 +137,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
       setSuccessAction('MSG');
       setTimeout(() => setSuccessAction(null), 2000);
     } catch (err: any) {
-      console.error("Firebase Update Error:", err);
-      if (err.message.includes('PERMISSION_DENIED')) {
-        alert('فشل إرسال الإشعار: حسابك لا يملك صلاحيات الكتابة. تأكد من أنك سجلت الدخول ببريد المسؤول الرئيسي.');
-      } else {
-        alert('حدث خطأ غير متوقع: ' + err.message);
-      }
+      console.error("Broadcast Error:", err);
+      alert('فشل إرسال الإشعار: ' + (err.message.includes('PERMISSION_DENIED') ? 'خطأ في الصلاحيات' : err.message));
     } finally {
       setLoadingAction(null);
     }
@@ -147,7 +151,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
       setSuccessAction('LOCK');
       setTimeout(() => setSuccessAction(null), 2000);
     } catch (err) {
-      alert('فشل في تغيير حالة النظام: يرجى التحقق من الصلاحيات');
+      alert('فشل في تغيير حالة النظام: يرجى التحقق من الاتصال');
     } finally {
       setLoadingAction(null);
     }
@@ -177,15 +181,27 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
           <form onSubmit={handleAdminLogin} className="space-y-5">
             {error && <div className="bg-red-500/10 text-red-500 p-4 rounded-2xl text-[10px] font-black text-center border border-red-500/20">{error}</div>}
             <div className="space-y-1">
-               <label className="text-[10px] font-black text-slate-500 mr-4 uppercase">البريد الإداري</label>
-               <input type="email" placeholder="admin@kimo.dz" className="w-full bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white font-bold outline-none focus:border-orange-500 transition-all shadow-inner" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
+               <label className="text-[10px] font-black text-slate-500 mr-4 uppercase">بريد المسؤول الرئيسي</label>
+               <input 
+                 type="email" 
+                 placeholder="downloader@gmail.com" 
+                 className="w-full bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white font-bold outline-none focus:border-orange-500 transition-all shadow-inner" 
+                 value={loginForm.email} 
+                 onChange={e => setLoginForm({...loginForm, email: e.target.value})} 
+               />
             </div>
             <div className="space-y-1">
-               <label className="text-[10px] font-black text-slate-500 mr-4 uppercase">كلمة السر</label>
-               <input type="password" placeholder="••••••••" className="w-full bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white font-bold outline-none focus:border-orange-500 transition-all shadow-inner" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
+               <label className="text-[10px] font-black text-slate-500 mr-4 uppercase">كلمة السر الخاصة</label>
+               <input 
+                 type="password" 
+                 placeholder="••••••••" 
+                 className="w-full bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white font-bold outline-none focus:border-orange-500 transition-all shadow-inner" 
+                 value={loginForm.password} 
+                 onChange={e => setLoginForm({...loginForm, password: e.target.value})} 
+               />
             </div>
             <button disabled={isLoading} className="w-full bg-orange-500 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-orange-500/20 active:scale-95 transition-all mt-4 flex items-center justify-center">
-              {isLoading ? <Loader2 className="animate-spin" /> : 'دخول المسؤول'}
+              {isLoading ? <Loader2 className="animate-spin" /> : 'دخول نظام التحكم'}
             </button>
             <button type="button" onClick={onExit} className="w-full text-slate-500 text-xs font-bold flex items-center justify-center gap-2 mt-4 hover:text-white transition-colors"><ArrowLeft className="w-4 h-4" /> العودة للتطبيق</button>
           </form>
@@ -224,10 +240,13 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
 
       <main className="flex-1 min-w-0 flex flex-col max-h-screen overflow-hidden">
         <header className="h-24 bg-white border-b border-slate-100 flex items-center justify-between px-10 shrink-0 shadow-sm z-40">
-           <h2 className="text-2xl font-black text-slate-800">مركز التحكم المركزي</h2>
+           <div className="flex flex-col">
+              <h2 className="text-2xl font-black text-slate-800">مركز التحكم المركزي</h2>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">المسؤول: {ADMIN_EMAIL}</span>
+           </div>
            <div className="flex items-center gap-4">
               <div className="relative">
-                 <input type="text" placeholder="بحث..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-100 border-none rounded-2xl py-3 pr-12 pl-6 text-sm font-bold w-72 outline-none focus:ring-4 focus:ring-orange-500/10 transition-all" />
+                 <input type="text" placeholder="بحث سريع..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-100 border-none rounded-2xl py-3 pr-12 pl-6 text-sm font-bold w-72 outline-none focus:ring-4 focus:ring-orange-500/10 transition-all" />
                  <Search className="absolute right-4 top-3.5 w-5 h-5 text-slate-400" />
               </div>
               <button onClick={onExit} className="p-3 bg-slate-100 text-slate-500 rounded-2xl hover:bg-slate-200 transition-all"><ArrowLeft className="w-6 h-6" /></button>
@@ -278,6 +297,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                 </div>
              </div>
            )}
+           {/* باقي التبويبات تظهر هنا بناءً على الـ activeTab (المستخدمين، المتاجر، الخ) */}
         </div>
       </main>
     </div>
