@@ -8,8 +8,7 @@ import { AdminScreen } from './screens/AdminScreen';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { ref, get, onValue } from 'firebase/database';
-import { Loader2, Lock, Bell } from 'lucide-react';
-import getFCMToken from './services/fcmService';
+import { Loader2, Lock, AlertTriangle, Bell } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
@@ -20,13 +19,13 @@ const App: React.FC = () => {
   const [globalMessage, setGlobalMessage] = useState('');
 
   useEffect(() => {
-    // مراقبة تغيير الهاش في الرابط لفتح لوحة التحكم
+    // مراقبة تغيير الهاش في الرابط
     const handleHashChange = () => {
       setIsAdminPath(window.location.hash === '#admin');
     };
     window.addEventListener('hashchange', handleHashChange);
 
-    // مراقبة إعدادات التطبيق (وضع الصيانة والرسائل العامة)
+    // مراقبة حالة التطبيق (مفتوح/مغلق) والرسائل العامة
     const appStateRef = ref(db, 'app_settings');
     onValue(appStateRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -36,43 +35,35 @@ const App: React.FC = () => {
       }
     });
 
-    // مراقبة حالة تسجيل الدخول وتحديد دور المستخدم
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          // التحقق من كونه زبون
           const customerSnapshot = await get(ref(db, `customers/${user.uid}`));
           if (customerSnapshot.exists()) {
             const data = customerSnapshot.val();
             updateSession(UserRole.CUSTOMER, data.name);
-            getFCMToken(UserRole.CUSTOMER); // الحصول على توكن الإشعارات
             setLoading(false);
             return;
           }
 
-          // التحقق من كونه متجر
           const storeSnapshot = await get(ref(db, `stores/${user.uid}`));
           if (storeSnapshot.exists()) {
             const data = storeSnapshot.val();
             updateSession(UserRole.STORE, data.name);
-            getFCMToken(UserRole.STORE);
             setLoading(false);
             return;
           }
 
-          // التحقق من كونه موصل
           const driverSnapshot = await get(ref(db, `drivers/${user.uid}`));
           if (driverSnapshot.exists()) {
             const data = driverSnapshot.val();
             updateSession(UserRole.DRIVER, data.name);
-            getFCMToken(UserRole.DRIVER);
             setLoading(false);
             return;
           }
 
           fallbackToLocalData();
         } catch (error: any) {
-          console.error("Auth check error:", error);
           fallbackToLocalData();
         }
       } else {
@@ -102,7 +93,7 @@ const App: React.FC = () => {
     const savedName = localStorage.getItem('kimo_user_name');
     if (savedRole) setCurrentRole(savedRole);
     else setCurrentRole(null);
-    if (savedName) setUserName(savedName || '');
+    if (savedName) setUserName(savedName);
   };
 
   const handleLogout = async () => {
@@ -119,7 +110,6 @@ const App: React.FC = () => {
 
   const handleManualLogin = (role: UserRole, name?: string) => {
     updateSession(role, name || '');
-    getFCMToken(role);
   };
 
   if (loading) {
@@ -130,12 +120,12 @@ const App: React.FC = () => {
     );
   }
 
-  // صفحة المسؤول تظهر دائماً عبر الهاش #admin
+  // إذا كان المستخدم في صفحة الأدمن، نظهرها له بغض النظر عن حالة غلق التطبيق
   if (isAdminPath) {
     return <AdminScreen onExit={() => { window.location.hash = ''; setIsAdminPath(false); }} />;
   }
 
-  // وضع الصيانة (يستثنى منه حساب المسؤول الرئيسي)
+  // إذا كان التطبيق مغلقاً، نظهر شاشة الصيانة لجميع المستخدمين عدا الأدمن
   if (isLocked && auth.currentUser?.email !== 'downloader@gmail.com') {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center font-cairo">
@@ -172,7 +162,7 @@ const App: React.FC = () => {
 
   return (
     <div className="font-sans antialiased text-primary-900 bg-primary-50 min-h-screen">
-       {/* الإشعار العلوي العام */}
+       {/* عرض الإشعار العام فوق كل الشاشات إذا كان موجوداً والمستخدم مسجل دخول */}
        {currentRole && globalMessage && (
           <div className="bg-orange-500 text-white p-3 text-center text-xs font-black animate-pulse z-[2000] sticky top-0 shadow-lg flex items-center justify-center gap-2">
             <Bell className="w-4 h-4" />
