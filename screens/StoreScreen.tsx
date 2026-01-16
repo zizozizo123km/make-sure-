@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Category, Product, Order, OrderStatus, StoreProfile } from '../types';
 import { db, auth } from '../services/firebase';
 import { ref, push, set, onValue, remove, update } from 'firebase/database';
-import { Package, Plus, Upload, Loader2, Trash2, ArrowLeft, ClipboardList, CheckCircle, Camera, LogOut, User } from 'lucide-react';
+import { Package, Plus, Upload, Loader2, Trash2, ArrowLeft, ClipboardList, CheckCircle, Camera, LogOut, User, RefreshCw, Phone } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 
 interface StoreScreenProps {
@@ -36,8 +36,10 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
 
   const [newStoreName, setNewStoreName] = useState(userName);
+  const [newStorePhone, setNewStorePhone] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const profileImageInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,6 +57,7 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
         const data = snapshot.val();
         setStoreProfile(data);
         setNewStoreName(data.name || userName);
+        setNewStorePhone(data.phone || '');
       }
     });
 
@@ -89,9 +92,36 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
   const handleUpdateStoreProfile = async () => {
     if (!currentStoreId) return;
     setIsUpdatingProfile(true);
-    await update(ref(db, `stores/${currentStoreId}`), { name: newStoreName });
+    await update(ref(db, `stores/${currentStoreId}`), { 
+      name: newStoreName,
+      phone: newStorePhone
+    });
     setIsUpdatingProfile(false);
-    alert("تم تحديث المتجر");
+    alert("تم تحديث بيانات المتجر ✓");
+  };
+
+  const handleUpdateLocation = () => {
+    setIsLocating(true);
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          if (currentStoreId) {
+            await update(ref(db, `stores/${currentStoreId}`), {
+              coordinates: { 
+                lat: position.coords.latitude, 
+                lng: position.coords.longitude 
+              }
+            });
+            alert("تم تحديث موقع المتجر بنجاح ✓");
+          }
+          setIsLocating(false);
+        },
+        () => {
+          alert("فشل تحديد الموقع، يرجى تفعيل GPS");
+          setIsLocating(false);
+        }
+      );
+    }
   };
 
   const handleUpdateStoreImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,7 +149,7 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-500" /></div>;
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] pb-24 font-cairo">
+    <div className="min-h-screen bg-[#F8F9FA] pb-24 font-cairo text-right" dir="rtl">
       <header className="p-6 flex justify-between items-center bg-white border-b border-gray-100">
         <h1 className="text-xl font-black text-[#8E949A]">
           {activeTab === 'PRODUCTS' ? 'منتجاتي' : activeTab === 'ORDERS' ? 'الطلبات' : 'حساب المتجر'}
@@ -134,12 +164,14 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
           <div className="animate-fade-in-up">
             {!isAddingProduct ? (
               <div className="space-y-4">
-                {myProducts.map(p => (
+                {myProducts.length === 0 ? (
+                   <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-gray-100 text-gray-300 font-bold">لا توجد منتجات حالياً</div>
+                ) : myProducts.map(p => (
                   <div key={p.id} className="bg-white p-4 rounded-[2rem] shadow-sm border border-gray-100 flex gap-4 items-center">
                     <div className="flex-1 text-right py-1">
                       <h4 className="font-bold text-[#8E949A] text-sm mb-2">{p.name}</h4>
                       <span className="text-lg font-black text-[#F9923B]">{formatCurrency(p.price)}</span>
-                      <button onClick={() => remove(ref(db, `products/${p.id}`))} className="block mt-2 text-gray-300 hover:text-danger transition-colors"><Trash2 className="w-4 h-4"/></button>
+                      <button onClick={() => remove(ref(db, `products/${p.id}`))} className="block mt-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>
                     </div>
                     <img src={p.image} className="w-24 h-24 rounded-[1.5rem] object-cover shadow-sm" />
                   </div>
@@ -159,7 +191,7 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                    </div>
                    <input type="text" placeholder="اسم المنتج" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none" />
                    <input type="number" placeholder="السعر" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none" />
-                   <button onClick={saveProduct} disabled={isSaving || isUploading} className="w-full bg-primary-900 text-white py-4 rounded-2xl font-black shadow-lg">حفظ المنتج</button>
+                   <button onClick={saveProduct} disabled={isSaving || isUploading} className="w-full bg-[#2B2F3B] text-white py-4 rounded-2xl font-black shadow-lg">حفظ المنتج</button>
                 </div>
               </div>
             )}
@@ -168,15 +200,17 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
 
         {activeTab === 'ORDERS' && (
           <div className="animate-fade-in-up space-y-4">
-            {orders.map(order => (
+            {orders.length === 0 ? (
+               <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-gray-100 text-gray-300 font-bold">لا توجد طلبات واردة حالياً</div>
+            ) : orders.map(order => (
               <div key={order.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
                 <div className="flex justify-between items-start mb-4">
                   <h3 className="font-black text-[#8E949A]">{order.customerName}</h3>
                   <span className="font-black text-brand-600">{formatCurrency(order.totalPrice)}</span>
                 </div>
                 {order.status === OrderStatus.PENDING ? (
-                  <button onClick={() => update(ref(db, `orders/${order.id}`), { status: OrderStatus.ACCEPTED_BY_STORE })} className="w-full bg-primary-900 text-white py-3 rounded-2xl font-bold">قبول الطلب</button>
-                ) : <div className="text-center text-success font-bold py-2 bg-success/10 rounded-xl">{order.status}</div>}
+                  <button onClick={() => update(ref(db, `orders/${order.id}`), { status: OrderStatus.ACCEPTED_BY_STORE })} className="w-full bg-[#2B2F3B] text-white py-3 rounded-2xl font-bold">قبول الطلب</button>
+                ) : <div className="text-center text-green-500 font-bold py-2 bg-green-50 rounded-xl">{order.status}</div>}
               </div>
             ))}
           </div>
@@ -193,10 +227,49 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                 <button onClick={() => profileImageInputRef.current?.click()} className="absolute -bottom-2 -right-2 bg-brand-600 text-white p-3 rounded-2xl shadow-lg border-2 border-white"><Camera className="w-5 h-5" /></button>
                 <input type="file" ref={profileImageInputRef} onChange={handleUpdateStoreImage} className="hidden" accept="image/*" />
               </div>
-              <div className="space-y-6">
-                <input type="text" value={newStoreName} onChange={e => setNewStoreName(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-black text-center outline-none" />
-                <button onClick={handleUpdateStoreProfile} disabled={isUpdatingProfile} className="w-full bg-primary-900 text-white py-4 rounded-2xl font-black shadow-lg">تحديث البيانات</button>
-                <button onClick={onLogout} className="w-full bg-danger/10 text-danger py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-danger hover:text-white transition-all"><LogOut className="w-5 h-5" /> تسجيل الخروج</button>
+              
+              <div className="space-y-4 text-right">
+                <label className="text-xs font-black text-slate-400 pr-2">اسم المتجر</label>
+                <input 
+                  type="text" 
+                  value={newStoreName} 
+                  onChange={e => setNewStoreName(e.target.value)} 
+                  className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none focus:border-orange-500 border border-transparent" 
+                />
+                
+                <label className="text-xs font-black text-slate-400 pr-2">رقم هاتف المتجر</label>
+                <input 
+                  type="tel" 
+                  value={newStorePhone} 
+                  onChange={e => setNewStorePhone(e.target.value)} 
+                  className="w-full p-4 bg-gray-50 rounded-2xl font-black outline-none focus:border-orange-500 border border-transparent" 
+                  placeholder="06XXXXXXXX"
+                />
+
+                <button 
+                  onClick={handleUpdateLocation}
+                  disabled={isLocating}
+                  className="w-full py-4 border-2 border-dashed border-orange-200 text-orange-500 rounded-2xl font-black text-xs flex items-center justify-center gap-2"
+                >
+                  {isLocating ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+                  تحديث موقع المتجر (GPS)
+                </button>
+
+                <div className="pt-4 space-y-3">
+                  <button 
+                    onClick={handleUpdateStoreProfile} 
+                    disabled={isUpdatingProfile} 
+                    className="w-full bg-[#2B2F3B] text-white py-4 rounded-2xl font-black shadow-lg"
+                  >
+                    حفظ التعديلات
+                  </button>
+                  <button 
+                    onClick={onLogout} 
+                    className="w-full bg-red-50 text-red-500 py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    <LogOut className="w-5 h-5" /> تسجيل الخروج
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -204,9 +277,9 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
       </main>
 
       <nav className="fixed bottom-6 left-6 right-6 bg-[#2B2F3B] rounded-[2.2rem] p-2 flex justify-around items-center shadow-2xl z-50">
-         <button onClick={() => setActiveTab('PRODUCTS')} className={`p-4 rounded-full transition-all ${activeTab === 'PRODUCTS' ? 'bg-brand-500 text-white' : 'text-gray-500'}`}><Package className="w-6 h-6" /></button>
-         <button onClick={() => setActiveTab('ORDERS')} className={`p-4 rounded-full transition-all ${activeTab === 'ORDERS' ? 'bg-brand-500 text-white' : 'text-gray-500'}`}><ClipboardList className="w-6 h-6" /></button>
-         <button onClick={() => setActiveTab('PROFILE')} className={`p-4 rounded-full transition-all ${activeTab === 'PROFILE' ? 'bg-brand-500 text-white' : 'text-gray-500'}`}><User className="w-6 h-6" /></button>
+         <button onClick={() => setActiveTab('PRODUCTS')} className={`p-4 rounded-full transition-all ${activeTab === 'PRODUCTS' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}><Package className="w-6 h-6" /></button>
+         <button onClick={() => setActiveTab('ORDERS')} className={`p-4 rounded-full transition-all ${activeTab === 'ORDERS' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}><ClipboardList className="w-6 h-6" /></button>
+         <button onClick={() => setActiveTab('PROFILE')} className={`p-4 rounded-full transition-all ${activeTab === 'PROFILE' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}><User className="w-6 h-6" /></button>
       </nav>
     </div>
   );

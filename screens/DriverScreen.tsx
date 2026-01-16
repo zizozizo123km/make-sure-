@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapVisualizer } from '../components/MapVisualizer';
 import { RatingModal } from '../components/RatingModal';
-import { MapPin, Navigation, CheckCircle, Clock, ExternalLink, Loader2, Package, Bike as BikeIcon, ArrowRight, User, LogOut, Camera, Settings, Phone } from 'lucide-react';
+import { MapPin, Navigation, CheckCircle, Clock, ExternalLink, Loader2, Package, Bike as BikeIcon, ArrowRight, User, LogOut, Camera, Settings, Phone, RefreshCw, Save } from 'lucide-react';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, update, get } from 'firebase/database';
 import { Order, OrderStatus } from '../types';
@@ -15,13 +15,23 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
   const [driverProfile, setDriverProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Profile Edit State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({ name: '', phone: '' });
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+
   const currentDriverId = auth.currentUser?.uid;
 
   useEffect(() => {
     if (!currentDriverId) return;
 
     onValue(ref(db, `drivers/${currentDriverId}`), (snap) => {
-      if (snap.exists()) setDriverProfile(snap.val());
+      if (snap.exists()) {
+        const data = snap.val();
+        setDriverProfile(data);
+        setEditData({ name: data.name || '', phone: data.phone || '' });
+      }
     });
 
     onValue(ref(db, 'orders'), (snapshot) => {
@@ -41,12 +51,53 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
     });
   }, [currentDriverId]);
 
+  const handleUpdateProfile = async () => {
+    if (!currentDriverId || !editData.name || !editData.phone) return;
+    setIsUpdating(true);
+    try {
+      await update(ref(db, `drivers/${currentDriverId}`), {
+        name: editData.name,
+        phone: editData.phone
+      });
+      setIsEditing(false);
+      alert("تم تحديث بياناتك بنجاح ✓");
+    } catch (e) {
+      alert("خطأ أثناء التحديث");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleUpdateLocation = () => {
+    setIsLocating(true);
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          if (currentDriverId) {
+            await update(ref(db, `drivers/${currentDriverId}`), {
+              coordinates: { 
+                lat: position.coords.latitude, 
+                lng: position.coords.longitude 
+              }
+            });
+            alert("تم تحديث موقعك الجغرافي بنجاح ✓");
+          }
+          setIsLocating(false);
+        },
+        () => {
+          alert("يرجى تفعيل الـ GPS لتحديث الموقع");
+          setIsLocating(false);
+        }
+      );
+    }
+  };
+
   const handleAcceptOrder = async (orderId: string) => {
       if (!currentDriverId) return;
       await update(ref(db, `orders/${orderId}`), {
           status: OrderStatus.ACCEPTED_BY_DRIVER,
           driverId: currentDriverId,
-          driverName: userName
+          driverName: driverProfile?.name || userName
       });
       setActiveTab('ACTIVE');
   };
@@ -58,7 +109,7 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] pb-28 font-cairo">
+    <div className="min-h-screen bg-[#F8F9FA] pb-28 font-cairo text-right" dir="rtl">
        {showRating && activeOrder && (
          <RatingModal 
            type="CUSTOMER" 
@@ -72,7 +123,7 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
              <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-orange-500 bg-white">
-                <img src={driverProfile?.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${userName}`} className="w-full h-full object-cover" />
+                <img src={driverProfile?.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${driverProfile?.name || userName}`} className="w-full h-full object-cover" />
              </div>
              <div>
                 <h1 className="font-black text-lg">{driverProfile?.name || userName}</h1>
@@ -89,7 +140,7 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
             {availableOrders.length === 0 ? (
                 <div className="bg-white rounded-[2.5rem] p-12 text-center text-slate-300 border border-dashed border-slate-200">
                     <BikeIcon className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                    <p className="font-black text-sm">لا توجد طلبات جديدة حالياً</p>
+                    <p className="font-black text-sm text-center">لا توجد طلبات جديدة حالياً</p>
                 </div>
             ) : (
                 availableOrders.map(order => (
@@ -155,10 +206,68 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
           <div className="animate-fade-in-up">
              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 text-center">
                 <div className="w-32 h-32 rounded-[2rem] border-4 border-slate-50 overflow-hidden shadow-lg mx-auto mb-8 bg-slate-50">
-                   <img src={driverProfile?.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${userName}`} className="w-full h-full object-cover" />
+                   <img src={driverProfile?.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${driverProfile?.name || userName}`} className="w-full h-full object-cover" />
                 </div>
-                <h3 className="text-2xl font-black mb-10">{userName}</h3>
-                <button onClick={onLogout} className="w-full bg-red-50 text-red-500 py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all"><LogOut className="w-5 h-5" /> تسجيل الخروج</button>
+                
+                {!isEditing ? (
+                  <>
+                    <h3 className="text-2xl font-black mb-1 text-center">{driverProfile?.name || userName}</h3>
+                    <p className="text-slate-400 font-bold mb-10 text-center">{driverProfile?.phone}</p>
+                    
+                    <div className="space-y-4">
+                       <button onClick={() => setIsEditing(true)} className="w-full bg-slate-50 text-slate-600 py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all">
+                         تعديل البروفيل
+                       </button>
+                       <button onClick={onLogout} className="w-full bg-red-50 text-red-500 py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all">
+                         <LogOut className="w-5 h-5" /> تسجيل الخروج
+                       </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-4 text-right">
+                    <label className="text-xs font-black text-slate-400 pr-2">الاسم</label>
+                    <input 
+                      type="text" 
+                      value={editData.name} 
+                      onChange={e => setEditData({...editData, name: e.target.value})}
+                      className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500"
+                    />
+                    
+                    <label className="text-xs font-black text-slate-400 pr-2">رقم الهاتف</label>
+                    <input 
+                      type="tel" 
+                      value={editData.phone} 
+                      onChange={e => setEditData({...editData, phone: e.target.value})}
+                      className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500"
+                    />
+
+                    <button 
+                      onClick={handleUpdateLocation}
+                      disabled={isLocating}
+                      className="w-full py-4 border-2 border-dashed border-orange-200 text-orange-500 rounded-2xl font-black text-xs flex items-center justify-center gap-2"
+                    >
+                      {isLocating ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+                      تحديث موقع العمل (GPS)
+                    </button>
+
+                    <div className="flex gap-3 pt-6">
+                       <button 
+                         onClick={handleUpdateProfile}
+                         disabled={isUpdating}
+                         className="flex-1 bg-[#2B2F3B] text-white py-4 rounded-2xl font-black shadow-xl flex items-center justify-center gap-2"
+                       >
+                         {isUpdating ? <Loader2 className="animate-spin" /> : <Save className="w-5 h-5" />}
+                         حفظ التغييرات
+                       </button>
+                       <button 
+                         onClick={() => setIsEditing(false)}
+                         className="px-6 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black"
+                       >
+                         إلغاء
+                       </button>
+                    </div>
+                  </div>
+                )}
              </div>
           </div>
         )}
