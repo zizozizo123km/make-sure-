@@ -1,6 +1,6 @@
-
 import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
+import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 
 // Your web app's Firebase configuration
@@ -17,6 +17,6 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-// Fix: Removed getAnalytics as it was causing a module export error and is not used in the application.
+const analytics = getAnalytics(app);
 export const db = getDatabase(app);
 export const auth = getAuth(app);

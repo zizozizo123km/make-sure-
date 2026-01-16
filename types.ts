@@ -44,16 +44,19 @@ export interface StoreProfile {
   isVerified: boolean;
   category: Category;
   location: string;
-  coordinates: Coordinates; // For distance calculation
+  coordinates: Coordinates;
   image: string;
+  phone?: string; // أضفنا رقم الهاتف هنا
 }
 
 export interface Order {
   id: string;
   customerId: string;
   customerName: string;
+  customerPhone?: string; // أضفنا رقم هاتف الزبون
   storeId: string;
   storeName: string;
+  storePhone?: string; // أضفنا رقم هاتف المتجر
   driverId?: string;
   driverName?: string;
   products: {product: Product, quantity: number}[];
