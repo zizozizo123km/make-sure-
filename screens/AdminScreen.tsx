@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, update, remove, set } from 'firebase/database';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { 
   ShieldCheck, Users, Store, Bike, Lock, Unlock, 
   Send, Loader2, ArrowLeft, LogOut, Bell, Settings,
@@ -24,6 +25,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLoadingLogin, setIsLoadingLogin] = useState(false);
   
   // Data State
   const [stats, setStats] = useState({ customers: 0, stores: 0, drivers: 0, orders: 0, revenue: 0 });
@@ -38,9 +40,15 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
   const [successAction, setSuccessAction] = useState<string | null>(null);
 
   useEffect(() => {
+    // إذا كان المسؤول مسجلاً دخوله مسبقاً بنفس البريد، ادخل تلقائياً
+    if (auth.currentUser?.email === 'downloader@gmail.com') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!isAuthenticated) return;
 
-    // المراقبة الحية لجميع الجداول
     const unsubCustomers = onValue(ref(db, 'customers'), (s) => {
       const list = s.exists() ? Object.entries(s.val()).map(([id, val]: any) => ({ id, ...val })) : [];
       setCustomers(list);
@@ -80,13 +88,26 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     });
   }, [customers, stores, drivers, orders]);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loginForm.email === 'downloader@gmail.com' && loginForm.password === 'kimo1212') {
-      setIsAuthenticated(true);
-      setError('');
-    } else {
-      setError('بيانات الدخول غير صحيحة');
+    setIsLoadingLogin(true);
+    setError('');
+    
+    try {
+      // تسجيل الدخول الفعلي في Firebase Auth لضمان الحصول على الصلاحيات (Token)
+      await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
+      
+      if (loginForm.email === 'downloader@gmail.com') {
+        setIsAuthenticated(true);
+      } else {
+        setError('هذا الحساب لا يملك صلاحيات المسؤول');
+        await auth.signOut();
+      }
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError('بيانات الدخول غير صحيحة أو مشكلة في الاتصال');
+    } finally {
+      setIsLoadingLogin(false);
     }
   };
 
@@ -95,7 +116,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
       try {
         await remove(ref(db, `${path}/${id}`));
       } catch (err) {
-        alert('حدث خطأ أثناء الحذف');
+        alert('حدث خطأ أثناء الحذف: ' + err);
       }
     }
   };
@@ -106,8 +127,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
       await update(ref(db, 'app_settings'), { isLocked: !appConfig.isLocked });
       setSuccessAction('LOCK');
       setTimeout(() => setSuccessAction(null), 2000);
-    } catch (err) {
-      alert('فشل في تغيير حالة النظام');
+    } catch (err: any) {
+      alert('فشل في تغيير حالة النظام: ' + err.message);
     } finally {
       setLoadingAction(null);
     }
@@ -117,7 +138,6 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     if (!appConfig.globalMessage && !window.confirm('هل تريد مسح الإشعار الحالي من عند الجميع؟')) return;
     setLoadingAction('MSG');
     try {
-      // استخدام update بدلاً من set لضمان عدم الكتابة فوق الإعدادات الأخرى
       await update(ref(db, 'app_settings'), { 
         globalMessage: appConfig.globalMessage,
         lastBroadcast: Date.now()
@@ -126,7 +146,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
       setTimeout(() => setSuccessAction(null), 2000);
     } catch (err: any) {
       console.error("Firebase Update Error:", err);
-      alert('فشل إرسال الإشعار: ' + (err.message || 'خطأ في الاتصال'));
+      alert('فشل إرسال الإشعار (PERMISSION_DENIED): يرجى التأكد من تسجيل دخولك كمسؤول');
     } finally {
       setLoadingAction(null);
     }
@@ -153,7 +173,9 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                <label className="text-[10px] font-black text-slate-500 mr-4 uppercase">كلمة السر</label>
                <input type="password" placeholder="••••••••" className="w-full bg-slate-800 border border-slate-700 rounded-2xl p-4 text-white font-bold outline-none focus:border-orange-500 transition-all shadow-inner" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
             </div>
-            <button className="w-full bg-orange-500 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-orange-500/20 active:scale-95 transition-all mt-4">دخول المسؤول</button>
+            <button disabled={isLoadingLogin} className="w-full bg-orange-500 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-orange-500/20 active:scale-95 transition-all mt-4 flex items-center justify-center gap-2">
+              {isLoadingLogin ? <Loader2 className="animate-spin" /> : 'دخول المسؤول'}
+            </button>
             <button type="button" onClick={onExit} className="w-full text-slate-500 text-xs font-bold flex items-center justify-center gap-2 mt-4 hover:text-white transition-colors"><ArrowLeft className="w-4 h-4" /> العودة للتطبيق</button>
           </form>
         </div>
@@ -185,7 +207,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
         </nav>
 
         <div className="p-8 border-t border-slate-800">
-           <button onClick={() => setIsAuthenticated(false)} className="w-full flex items-center justify-center gap-3 py-4 bg-red-500/10 text-red-500 rounded-2xl font-black text-sm hover:bg-red-500 hover:text-white transition-all">
+           <button onClick={async () => { await auth.signOut(); setIsAuthenticated(false); }} className="w-full flex items-center justify-center gap-3 py-4 bg-red-500/10 text-red-500 rounded-2xl font-black text-sm hover:bg-red-500 hover:text-white transition-all">
              <LogOut className="w-5 h-5" /> تسجيل الخروج الآمن
            </button>
         </div>
