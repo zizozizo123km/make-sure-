@@ -98,7 +98,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     setIsLoading(true);
     setError('');
     
-    // التحقق من أن البيانات المدخلة مطابقة للمسؤول
+    // التحقق المحلي السريع قبل مخاطبة Firebase لتقليل الطلبات
     if (loginForm.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
       setError('هذا البريد غير مخول للدخول كمسؤول');
       setIsLoading(false);
@@ -112,23 +112,30 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     }
 
     try {
-      // محاولة تسجيل الدخول
-      try {
-        await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-        setIsAuthenticated(true);
-      } catch (err: any) {
-        // إذا كان الخطأ هو "المستخدم غير موجود"، نقوم بإنشائه فوراً
-        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-          console.log("Creating Admin Account for the first time...");
-          await createUserWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-          setIsAuthenticated(true);
-        } else {
-          throw err;
-        }
-      }
+      // محاولة تسجيل الدخول أولاً
+      await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
+      setIsAuthenticated(true);
     } catch (err: any) {
-      console.error("Admin Auth Error:", err);
-      setError('حدث خطأ أثناء الاتصال بـ Firebase: ' + err.message);
+      console.error("Auth Error:", err.code);
+      
+      if (err.code === 'auth/too-many-requests') {
+        setError('لقد قمت بمحاولات كثيرة جداً. يرجى الانتظار لمدة دقيقتين ثم المحاولة مرة أخرى.');
+      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        // إذا لم يكن الحساب موجوداً، نحاول إنشاءه لمرة واحدة فقط
+        try {
+           console.log("Admin account not found, attempting initial setup...");
+           await createUserWithEmailAndPassword(auth, loginForm.email, loginForm.password);
+           setIsAuthenticated(true);
+        } catch (createErr: any) {
+           if (createErr.code === 'auth/email-already-in-use') {
+             setError('كلمة السر التي أدخلتها غير صحيحة لهذا الحساب.');
+           } else {
+             setError('فشل الدخول: ' + (createErr.code === 'auth/too-many-requests' ? 'طلبات كثيرة، انتظر قليلاً' : 'تأكد من بياناتك'));
+           }
+        }
+      } else {
+        setError('حدث خطأ في الاتصال: ' + err.message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -169,16 +176,6 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     }
   };
 
-  const deleteItem = async (path: string, id: string) => {
-    if (window.confirm('هل أنت متأكد من حذف هذا السجل نهائياً؟')) {
-      try {
-        await remove(ref(db, `${path}/${id}`));
-      } catch (err) {
-        alert('حدث خطأ أثناء الحذف');
-      }
-    }
-  };
-
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 font-cairo text-right" dir="rtl">
@@ -191,7 +188,11 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
             <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">KIMO CENTRAL CONTROL</p>
           </div>
           <form onSubmit={handleAdminLogin} className="space-y-5">
-            {error && <div className="bg-red-500/10 text-red-500 p-4 rounded-2xl text-[10px] font-black text-center border border-red-500/20">{error}</div>}
+            {error && (
+              <div className="bg-red-500/10 text-red-500 p-4 rounded-2xl text-[11px] font-black text-center border border-red-500/20 animate-pulse">
+                {error}
+              </div>
+            )}
             <div className="space-y-1">
                <label className="text-[10px] font-black text-slate-500 mr-4 uppercase">بريد المسؤول الرئيسي</label>
                <input 
