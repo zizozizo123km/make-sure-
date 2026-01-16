@@ -8,7 +8,8 @@ import {
   Activity, Database, CheckCircle2, Trash2,
   LayoutDashboard, ShoppingBag, Search, Filter, 
   MapPin, Phone, Star, Eye, CreditCard,
-  AlertTriangle, Radio, Clock, Mail, ShieldAlert
+  AlertTriangle, Radio, Clock, Mail, ShieldAlert,
+  UserCheck, ExternalLink, Calendar
 } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import { Order, OrderStatus } from '../types';
@@ -17,7 +18,7 @@ interface AdminScreenProps {
   onExit: () => void;
 }
 
-type AdminTab = 'DASHBOARD' | 'CUSTOMERS' | 'STORES' | 'DRIVERS' | 'ORDERS' | 'SETTINGS';
+type AdminTab = 'DASHBOARD' | 'CUSTOMERS' | 'STORES' | 'DRIVERS' | 'ORDERS';
 
 export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -98,7 +99,6 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     setIsLoading(true);
     setError('');
     
-    // التحقق المحلي السريع قبل مخاطبة Firebase لتقليل الطلبات
     if (loginForm.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
       setError('هذا البريد غير مخول للدخول كمسؤول');
       setIsLoading(false);
@@ -112,29 +112,18 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     }
 
     try {
-      // محاولة تسجيل الدخول أولاً
       await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
       setIsAuthenticated(true);
     } catch (err: any) {
-      console.error("Auth Error:", err.code);
-      
-      if (err.code === 'auth/too-many-requests') {
-        setError('لقد قمت بمحاولات كثيرة جداً. يرجى الانتظار لمدة دقيقتين ثم المحاولة مرة أخرى.');
-      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-        // إذا لم يكن الحساب موجوداً، نحاول إنشاءه لمرة واحدة فقط
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
         try {
-           console.log("Admin account not found, attempting initial setup...");
            await createUserWithEmailAndPassword(auth, loginForm.email, loginForm.password);
            setIsAuthenticated(true);
         } catch (createErr: any) {
-           if (createErr.code === 'auth/email-already-in-use') {
-             setError('كلمة السر التي أدخلتها غير صحيحة لهذا الحساب.');
-           } else {
-             setError('فشل الدخول: ' + (createErr.code === 'auth/too-many-requests' ? 'طلبات كثيرة، انتظر قليلاً' : 'تأكد من بياناتك'));
-           }
+           setError('بيانات الدخول غير صحيحة');
         }
       } else {
-        setError('حدث خطأ في الاتصال: ' + err.message);
+        setError('حدث خطأ: ' + err.message);
       }
     } finally {
       setIsLoading(false);
@@ -142,11 +131,6 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
   };
 
   const broadcastMessage = async () => {
-    if (!auth.currentUser || auth.currentUser.email !== ADMIN_EMAIL) {
-      alert('يجب تسجيل الدخول كمسؤول رئيسي للقيام بهذه العملية');
-      return;
-    }
-
     setLoadingAction('MSG');
     try {
       await update(ref(db, 'app_settings'), { 
@@ -155,9 +139,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
       });
       setSuccessAction('MSG');
       setTimeout(() => setSuccessAction(null), 2000);
-    } catch (err: any) {
-      console.error("Broadcast Error:", err);
-      alert('فشل إرسال الإشعار: ' + (err.message.includes('PERMISSION_DENIED') ? 'خطأ في الصلاحيات' : err.message));
+    } catch (err) {
+      alert('فشل التحديث');
     } finally {
       setLoadingAction(null);
     }
@@ -170,9 +153,39 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
       setSuccessAction('LOCK');
       setTimeout(() => setSuccessAction(null), 2000);
     } catch (err) {
-      alert('فشل في تغيير حالة النظام: يرجى التحقق من الاتصال');
+      alert('فشل في تغيير حالة النظام');
     } finally {
       setLoadingAction(null);
+    }
+  };
+
+  const toggleStoreVerification = async (storeId: string, currentStatus: boolean) => {
+    try {
+      await update(ref(db, `stores/${storeId}`), { isVerified: !currentStatus });
+    } catch (err) {
+      alert('فشل تحديث حالة المتجر');
+    }
+  };
+
+  const handleDelete = async (path: string, id: string) => {
+    if (window.confirm('هل أنت متأكد من حذف هذا السجل نهائياً؟')) {
+      try {
+        await remove(ref(db, `${path}/${id}`));
+      } catch (err) {
+        alert('حدث خطأ أثناء الحذف');
+      }
+    }
+  };
+
+  // تصفية البيانات بناءً على البحث والتبويب النشط
+  const getFilteredData = () => {
+    const q = searchQuery.toLowerCase();
+    switch(activeTab) {
+      case 'CUSTOMERS': return customers.filter(c => c.name?.toLowerCase().includes(q) || c.phone?.includes(q));
+      case 'STORES': return stores.filter(s => s.name?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q));
+      case 'DRIVERS': return drivers.filter(d => d.name?.toLowerCase().includes(q) || d.phone?.includes(q));
+      case 'ORDERS': return orders.filter(o => o.storeName?.toLowerCase().includes(q) || o.customerName?.toLowerCase().includes(q) || o.id?.toLowerCase().includes(q));
+      default: return [];
     }
   };
 
@@ -225,6 +238,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-cairo flex text-right" dir="rtl">
+      {/* Sidebar */}
       <aside className="w-80 bg-slate-900 text-white flex flex-col sticky top-0 h-screen shadow-2xl shrink-0 z-50">
         <div className="p-10 border-b border-slate-800">
            <div className="flex items-center gap-4">
@@ -251,15 +265,22 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
         </div>
       </aside>
 
+      {/* Main Content */}
       <main className="flex-1 min-w-0 flex flex-col max-h-screen overflow-hidden">
         <header className="h-24 bg-white border-b border-slate-100 flex items-center justify-between px-10 shrink-0 shadow-sm z-40">
-           <div className="flex flex-col">
+           <div className="flex flex-col text-right">
               <h2 className="text-2xl font-black text-slate-800">مركز التحكم المركزي</h2>
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">المسؤول: {ADMIN_EMAIL}</span>
            </div>
            <div className="flex items-center gap-4">
               <div className="relative">
-                 <input type="text" placeholder="بحث سريع..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-100 border-none rounded-2xl py-3 pr-12 pl-6 text-sm font-bold w-72 outline-none focus:ring-4 focus:ring-orange-500/10 transition-all" />
+                 <input 
+                   type="text" 
+                   placeholder="بحث في البيانات..." 
+                   value={searchQuery} 
+                   onChange={e => setSearchQuery(e.target.value)} 
+                   className="bg-slate-100 border-none rounded-2xl py-3 pr-12 pl-6 text-sm font-bold w-72 outline-none focus:ring-4 focus:ring-orange-500/10 transition-all text-right" 
+                 />
                  <Search className="absolute right-4 top-3.5 w-5 h-5 text-slate-400" />
               </div>
               <button onClick={onExit} className="p-3 bg-slate-100 text-slate-500 rounded-2xl hover:bg-slate-200 transition-all"><ArrowLeft className="w-6 h-6" /></button>
@@ -281,7 +302,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                       <h3 className="text-xl font-black mb-6 flex items-center gap-3"><Bell className="w-6 h-6 text-orange-500" /> بث إشعار فوري</h3>
                       <p className="text-xs text-slate-400 font-bold mb-4">اكتب الرسالة التي ستظهر في شريط التنبيهات لجميع المستخدمين.</p>
                       <textarea 
-                        className="w-full bg-slate-50 border border-slate-100 rounded-[2rem] p-6 text-sm font-bold h-40 outline-none focus:border-orange-500 resize-none transition-all mb-6 shadow-inner"
+                        className="w-full bg-slate-50 border border-slate-100 rounded-[2rem] p-6 text-sm font-bold h-40 outline-none focus:border-orange-500 resize-none transition-all mb-6 shadow-inner text-right"
                         placeholder="مثلاً: يوجد خصم 20% في مطعم كيمو!"
                         value={appConfig.globalMessage}
                         onChange={e => setAppConfig(prev => ({ ...prev, globalMessage: e.target.value }))}
@@ -298,7 +319,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                    <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-white">
                       <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-red-500"><ShieldAlert className="w-6 h-6" /> حالة التطبيق</h3>
                       <div className="p-6 bg-slate-50 rounded-3xl flex items-center justify-between">
-                         <div>
+                         <div className="text-right">
                             <p className="font-black text-slate-800">{appConfig.isLocked ? 'النظام مغلق للصيانة' : 'النظام يعمل بشكل طبيعي'}</p>
                             <p className="text-[10px] text-slate-400 font-bold mt-1">تفعيل هذا الخيار سيمنع الجميع من استخدام التطبيق</p>
                          </div>
@@ -308,6 +329,113 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                       </div>
                    </div>
                 </div>
+             </div>
+           )}
+
+           {activeTab === 'CUSTOMERS' && (
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
+               {getFilteredData().map((c: any) => (
+                 <div key={c.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 flex items-center gap-5">
+                   <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 shrink-0">
+                     <Users size={28} />
+                   </div>
+                   <div className="flex-1 text-right">
+                     <h4 className="font-black text-slate-800">{c.name}</h4>
+                     <p className="text-xs text-slate-400 font-bold flex items-center justify-end gap-1 mt-1"><Phone size={12} /> {c.phone}</p>
+                     <p className="text-[10px] text-slate-300 mt-1">{c.email}</p>
+                   </div>
+                   <button onClick={() => handleDelete('customers', c.id)} className="p-3 text-slate-300 hover:text-red-500 transition-all"><Trash2 size={20} /></button>
+                 </div>
+               ))}
+             </div>
+           )}
+
+           {activeTab === 'STORES' && (
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
+               {getFilteredData().map((s: any) => (
+                 <div key={s.id} className="bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-slate-50 group">
+                    <div className="h-32 bg-slate-100 relative overflow-hidden">
+                      <img src={s.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      <div className="absolute top-3 right-3 flex gap-2">
+                        {s.isVerified && <div className="bg-blue-500 text-white p-1.5 rounded-lg shadow-lg"><ShieldCheck size={14} /></div>}
+                      </div>
+                    </div>
+                    <div className="p-6 text-right">
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-black text-slate-800 text-lg">{s.name}</h4>
+                        <div className="flex items-center gap-1 text-yellow-500 font-black text-xs"><Star size={14} fill="currentColor" /> {s.rating?.toFixed(1) || '0.0'}</div>
+                      </div>
+                      <p className="text-xs text-slate-400 font-bold mb-4">{s.category}</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => toggleStoreVerification(s.id, s.isVerified)} className={`flex-1 py-3 rounded-xl font-black text-[10px] flex items-center justify-center gap-2 transition-all ${s.isVerified ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-500 hover:bg-blue-500 hover:text-white'}`}>
+                          <UserCheck size={14} /> {s.isVerified ? 'إلغاء التوثيق' : 'توثيق المتجر'}
+                        </button>
+                        <button onClick={() => handleDelete('stores', s.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={18} /></button>
+                      </div>
+                    </div>
+                 </div>
+               ))}
+             </div>
+           )}
+
+           {activeTab === 'DRIVERS' && (
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
+               {getFilteredData().map((d: any) => (
+                 <div key={d.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 flex items-center gap-5">
+                   <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-orange-600 shrink-0">
+                     <Bike size={28} />
+                   </div>
+                   <div className="flex-1 text-right">
+                     <h4 className="font-black text-slate-800">{d.name}</h4>
+                     <p className="text-xs text-slate-400 font-bold flex items-center justify-end gap-1 mt-1"><Phone size={12} /> {d.phone}</p>
+                     <div className="flex items-center justify-end gap-1 mt-2">
+                       <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                       <span className="text-[10px] font-black text-slate-400">نشط الآن</span>
+                     </div>
+                   </div>
+                   <button onClick={() => handleDelete('drivers', d.id)} className="p-3 text-slate-300 hover:text-red-500 transition-all"><Trash2 size={20} /></button>
+                 </div>
+               ))}
+             </div>
+           )}
+
+           {activeTab === 'ORDERS' && (
+             <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-50 overflow-hidden animate-fade-in-up">
+               <div className="overflow-x-auto">
+                 <table className="w-full text-right">
+                   <thead className="bg-slate-50 border-b border-slate-100">
+                     <tr>
+                       <th className="p-6 text-xs font-black text-slate-400 uppercase tracking-widest">رقم الطلب</th>
+                       <th className="p-6 text-xs font-black text-slate-400 uppercase tracking-widest">الزبون</th>
+                       <th className="p-6 text-xs font-black text-slate-400 uppercase tracking-widest">المتجر</th>
+                       <th className="p-6 text-xs font-black text-slate-400 uppercase tracking-widest">المبلغ</th>
+                       <th className="p-6 text-xs font-black text-slate-400 uppercase tracking-widest">الحالة</th>
+                       <th className="p-6 text-xs font-black text-slate-400 uppercase tracking-widest">إجراء</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-50">
+                     {getFilteredData().map((o: any) => (
+                       <tr key={o.id} className="hover:bg-slate-50/50 transition-colors">
+                         <td className="p-6 text-xs font-black text-slate-500 font-mono">#{o.id.slice(-6)}</td>
+                         <td className="p-6">
+                           <p className="text-sm font-black text-slate-800">{o.customerName}</p>
+                           <p className="text-[10px] text-slate-400 font-bold">{o.customerPhone}</p>
+                         </td>
+                         <td className="p-6 text-sm font-bold text-slate-600">{o.storeName}</td>
+                         <td className="p-6 font-black text-orange-500">{formatCurrency(o.totalPrice)}</td>
+                         <td className="p-6">
+                           <span className={`px-4 py-1.5 rounded-full text-[10px] font-black ${o.status === OrderStatus.DELIVERED ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'}`}>
+                             {o.status}
+                           </span>
+                         </td>
+                         <td className="p-6">
+                           <button onClick={() => handleDelete('orders', o.id)} className="p-2 text-slate-300 hover:text-red-500 transition-all"><Trash2 size={18} /></button>
+                         </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
              </div>
            )}
         </div>
