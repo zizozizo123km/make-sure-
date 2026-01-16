@@ -17,6 +17,7 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // Export services directly.
+// These functions correctly register the components within the initialized app.
 export const auth = getAuth(app);
 export const db = getDatabase(app);
 
