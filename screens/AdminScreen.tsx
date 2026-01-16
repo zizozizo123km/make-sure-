@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, update, remove, set } from 'firebase/database';
@@ -38,10 +39,15 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
   const [successAction, setSuccessAction] = useState<string | null>(null);
 
   useEffect(() => {
-    // التحقق من حالة تسجيل الدخول عند تحميل الصفحة
-    if (auth.currentUser?.email === 'downloader@gmail.com') {
-      setIsAuthenticated(true);
-    }
+    // مراقبة حالة المصادقة للتأكد من أننا نملك التوكن الصحيح
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user?.email === 'downloader@gmail.com') {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -93,7 +99,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     
     try {
       if (loginForm.email === 'downloader@gmail.com') {
-        // تسجيل دخول حقيقي للحصول على صلاحيات Firebase Rules (Token)
+        // تسجيل دخول حقيقي للحصول على صلاحيات Firebase
         await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
         setIsAuthenticated(true);
       } else {
@@ -101,19 +107,36 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
       }
     } catch (err: any) {
       console.error("Login Error:", err);
-      setError('بيانات الدخول غير صحيحة');
+      setError('بيانات الدخول غير صحيحة أو انتهت صلاحية الجلسة');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const deleteItem = async (path: string, id: string) => {
-    if (window.confirm('هل أنت متأكد من حذف هذا السجل نهائياً؟')) {
-      try {
-        await remove(ref(db, `${path}/${id}`));
-      } catch (err) {
-        alert('حدث خطأ أثناء الحذف');
+  const broadcastMessage = async () => {
+    if (!auth.currentUser) {
+      alert('يجب تسجيل الدخول أولاً للقيام بهذه العملية');
+      return;
+    }
+
+    setLoadingAction('MSG');
+    try {
+      // تحديث الرسالة في قاعدة البيانات
+      await update(ref(db, 'app_settings'), { 
+        globalMessage: appConfig.globalMessage,
+        lastBroadcast: Date.now()
+      });
+      setSuccessAction('MSG');
+      setTimeout(() => setSuccessAction(null), 2000);
+    } catch (err: any) {
+      console.error("Firebase Update Error:", err);
+      if (err.message.includes('PERMISSION_DENIED')) {
+        alert('فشل إرسال الإشعار: حسابك لا يملك صلاحيات الكتابة. تأكد من أنك سجلت الدخول ببريد المسؤول الرئيسي.');
+      } else {
+        alert('حدث خطأ غير متوقع: ' + err.message);
       }
+    } finally {
+      setLoadingAction(null);
     }
   };
 
@@ -124,27 +147,19 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
       setSuccessAction('LOCK');
       setTimeout(() => setSuccessAction(null), 2000);
     } catch (err) {
-      alert('فشل في تغيير حالة النظام: تأكد من صلاحيات المسؤول');
+      alert('فشل في تغيير حالة النظام: يرجى التحقق من الصلاحيات');
     } finally {
       setLoadingAction(null);
     }
   };
 
-  const broadcastMessage = async () => {
-    setLoadingAction('MSG');
-    try {
-      // تحديث الرسالة في قاعدة البيانات (سيراها جميع المستخدمين)
-      await update(ref(db, 'app_settings'), { 
-        globalMessage: appConfig.globalMessage,
-        lastBroadcast: Date.now()
-      });
-      setSuccessAction('MSG');
-      setTimeout(() => setSuccessAction(null), 2000);
-    } catch (err: any) {
-      console.error("Firebase Permission Error:", err);
-      alert('فشل إرسال الإشعار (PERMISSION_DENIED): تأكد من صحة البريد الإداري وتسجيل الدخول');
-    } finally {
-      setLoadingAction(null);
+  const deleteItem = async (path: string, id: string) => {
+    if (window.confirm('هل أنت متأكد من حذف هذا السجل نهائياً؟')) {
+      try {
+        await remove(ref(db, `${path}/${id}`));
+      } catch (err) {
+        alert('حدث خطأ أثناء الحذف');
+      }
     }
   };
 
@@ -198,7 +213,6 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
           <NavItem active={activeTab === 'STORES'} onClick={() => setActiveTab('STORES')} icon={<Store size={22}/>} label="المتاجر" count={stats.stores} />
           <NavItem active={activeTab === 'DRIVERS'} onClick={() => setActiveTab('DRIVERS')} icon={<Bike size={22}/>} label="الموصلين" count={stats.drivers} />
           <NavItem active={activeTab === 'ORDERS'} onClick={() => setActiveTab('ORDERS')} icon={<ShoppingBag size={22}/>} label="الطلبيات" count={stats.orders} />
-          <NavItem active={activeTab === 'SETTINGS'} onClick={() => setActiveTab('SETTINGS')} icon={<Settings size={22}/>} label="إعدادات النظام" />
         </nav>
 
         <div className="p-8 border-t border-slate-800">
@@ -233,6 +247,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                    <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-white">
                       <h3 className="text-xl font-black mb-6 flex items-center gap-3"><Bell className="w-6 h-6 text-orange-500" /> بث إشعار فوري</h3>
+                      <p className="text-xs text-slate-400 font-bold mb-4">اكتب الرسالة التي ستظهر في شريط التنبيهات لجميع المستخدمين.</p>
                       <textarea 
                         className="w-full bg-slate-50 border border-slate-100 rounded-[2rem] p-6 text-sm font-bold h-40 outline-none focus:border-orange-500 resize-none transition-all mb-6 shadow-inner"
                         placeholder="مثلاً: يوجد خصم 20% في مطعم كيمو!"
@@ -244,7 +259,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                         disabled={loadingAction === 'MSG'}
                         className={`w-full py-5 rounded-2xl font-black text-white shadow-2xl transition-all flex items-center justify-center gap-3 ${successAction === 'MSG' ? 'bg-green-500' : 'bg-slate-900 active:scale-95'}`}
                       >
-                        {loadingAction === 'MSG' ? <Loader2 className="animate-spin w-6 h-6" /> : successAction === 'MSG' ? <CheckCircle2 className="w-6 h-6" /> : <><Send className="w-5 h-5" /> نشر الإشعار</>}
+                        {loadingAction === 'MSG' ? <Loader2 className="animate-spin w-6 h-6" /> : successAction === 'MSG' ? <CheckCircle2 className="w-6 h-6" /> : <><Send className="w-5 h-5" /> نشر الإشعار فوراً</>}
                       </button>
                    </div>
 
@@ -253,7 +268,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                       <div className="p-6 bg-slate-50 rounded-3xl flex items-center justify-between">
                          <div>
                             <p className="font-black text-slate-800">{appConfig.isLocked ? 'النظام مغلق للصيانة' : 'النظام يعمل بشكل طبيعي'}</p>
-                            <p className="text-[10px] text-slate-400 font-bold mt-1">يتحكم هذا الخيار في إمكانية دخول المستخدمين</p>
+                            <p className="text-[10px] text-slate-400 font-bold mt-1">تفعيل هذا الخيار سيمنع الجميع من استخدام التطبيق</p>
                          </div>
                          <button onClick={toggleLock} className={`p-4 rounded-2xl text-white shadow-lg active:scale-90 transition-all ${appConfig.isLocked ? 'bg-green-500' : 'bg-red-500'}`}>
                             {appConfig.isLocked ? <Unlock /> : <Lock />}
