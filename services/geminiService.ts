@@ -1,32 +1,46 @@
-import { GoogleGenAI } from "@google/genai";
 
-// تهيئة الخدمة بشكل آمن
+import { GoogleGenAI } from "@google/genai";
+import { StoreProfile } from "../types";
+
 const getAiInstance = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    console.warn("Gemini API Key is missing. AI features will be disabled.");
-    return null;
-  }
+  if (!apiKey) return null;
   return new GoogleGenAI({ apiKey });
 };
 
 export const generateProductDescription = async (productName: string, category: string): Promise<string> => {
   const ai = getAiInstance();
-  if (!ai) return "وصف رائع للمنتج (الذكاء الاصطناعي غير مفعل).";
+  if (!ai) return "منتج رائع بجودة عالية متوفر الآن في متجرنا.";
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `اكتب وصفًا تسويقيًا قصيرًا جدًا (15 كلمة كحد أقصى) لمنتج "${productName}" في قسم "${category}". استخدم لهجة جزائرية محببة أو عربية بسيطة.`,
+    });
+    return response.text?.trim() || "منتج رائع متوفر الآن.";
+  } catch (error) {
+    return "منتج عالي الجودة متوفر بأسعار مميزة.";
+  }
+};
+
+export const getKimoAssistantResponse = async (userQuery: string, stores: StoreProfile[]): Promise<string> => {
+  const ai = getAiInstance();
+  if (!ai) return "أنا مساعد كيمو، كيف يمكنني مساعدتك اليوم في بئر العاتر؟";
+
+  const storeInfo = stores.map(s => `${s.name} (قسم: ${s.category}, تقييم: ${s.rating})`).join(', ');
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `
-        اكتب وصفًا جذابًا وتسويقيًا قصيرًا (لا يتجاوز 30 كلمة) لمنتج اسمه "${productName}" 
-        يقع ضمن فئة "${category}".
-        الوصف يجب أن يكون باللهجة الجزائرية المفهومة أو العربية الفصحى البسيطة، ومناسب لتطبيق بيع محلي.
+        أنت "مساعد كيمو" الذكي في تطبيق توصيل بئر العاتر (الجزائر). 
+        المتاجر المتاحة حالياً: [${storeInfo}].
+        الزبون يسأل: "${userQuery}".
+        أجب باختصار وبطريقة ودودة جداً باللهجة الجزائرية المفهومة. إذا سأل عن توصية، اقترح من المتاجر المتاحة فقط.
       `,
     });
-
-    return response.text?.trim() || "وصف رائع للمنتج.";
+    return response.text?.trim() || "أنا هنا لمساعدتك في طلباتك!";
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "لا يمكن توليد الوصف حالياً. يرجى المحاولة لاحقاً.";
+    return "عذراً، واجهت مشكلة بسيطة. جرب تسألني مرة أخرى!";
   }
 };
