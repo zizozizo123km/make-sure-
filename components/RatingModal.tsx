@@ -1,58 +1,87 @@
 import React, { useState } from 'react';
-import { Star, X } from 'lucide-react';
+import { Star, X, Loader2, Sparkles } from 'lucide-react';
+import { db } from '../services/firebase';
+import { ref, get, update, runTransaction } from 'firebase/database';
 
 interface RatingModalProps {
   onClose: () => void;
   targetName: string;
+  targetId: string;
   type: 'STORE' | 'DRIVER' | 'CUSTOMER';
 }
 
-export const RatingModal: React.FC<RatingModalProps> = ({ onClose, targetName, type }) => {
+export const RatingModal: React.FC<RatingModalProps> = ({ onClose, targetName, targetId, type }) => {
   const [rating, setRating] = useState(0);
-  const [hoverRating, setHoverRating] = useState(0); // For hover effect
+  const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const titles = {
-    STORE: 'قيّم المتجر',
-    DRIVER: 'قيّم الموصل',
-    CUSTOMER: 'قيّم الزبون'
+    STORE: 'كيف كانت جودة المتجر؟',
+    DRIVER: 'كيف كان أداء الموصل؟',
+    CUSTOMER: 'كيف كان تعامل الزبون؟'
   };
 
   const handleSubmit = async () => {
+    if (rating === 0 || !targetId) return;
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000)); 
-    alert('شكراً لتقييمك! يساعد هذا في تحسين خدمة كيمو.');
-    setIsSubmitting(false);
-    onClose();
+    
+    try {
+      const dbPath = type === 'STORE' ? `stores/${targetId}` : type === 'DRIVER' ? `drivers/${targetId}` : `customers/${targetId}`;
+      const targetRef = ref(db, dbPath);
+
+      await runTransaction(targetRef, (currentData) => {
+        if (currentData) {
+          const oldRating = currentData.rating || 0;
+          const oldCount = currentData.reviewCount || 0;
+          const newCount = oldCount + 1;
+          const newRating = ((oldRating * oldCount) + rating) / newCount;
+          
+          return {
+            ...currentData,
+            rating: newRating,
+            reviewCount: newCount
+          };
+        }
+        return currentData;
+      });
+
+      alert('شكراً لتقييمك! تقييمك يساعدنا على تحسين كيمو.');
+      onClose();
+    } catch (error) {
+      console.error("Rating error:", error);
+      alert('حدث خطأ أثناء إرسال التقييم');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-primary-900/70 z-[60] flex items-center justify-center p-4 animate-fade-in backdrop-blur-sm">
-      <div className="bg-white rounded-4xl w-full max-w-sm p-8 relative animate-scale-up shadow-2xl border border-primary-100">
-        <button onClick={onClose} className="absolute left-5 top-5 text-primary-400 hover:text-primary-600 transition-colors">
-          <X className="w-5 h-5" />
+    <div className="fixed inset-0 bg-slate-900/80 z-[1000] flex items-center justify-center p-6 backdrop-blur-xl animate-fade-in">
+      <div className="bg-white rounded-[3rem] w-full max-w-sm p-10 relative animate-scale-up shadow-2xl border border-white">
+        <button onClick={onClose} className="absolute left-6 top-6 text-slate-300 hover:text-slate-600 transition-colors">
+          <X className="w-6 h-6" />
         </button>
         
-        <div className="text-center mb-7">
-          <h3 className="text-2xl font-black text-primary-800 mb-2">{titles[type]}</h3>
-          <p className="text-sm text-primary-500">كيف كانت تجربتك مع <span className="font-bold text-brand-600">{targetName}</span>؟</p>
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 brand-gradient rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-xl shadow-brand-200 animate-float">
+            <Sparkles className="text-white w-10 h-10" />
+          </div>
+          <h3 className="text-2xl font-black text-slate-900 mb-2 leading-tight">{titles[type]}</h3>
+          <p className="text-sm text-slate-400 font-bold">رأيك في <span className="text-brand-500">{targetName}</span> يهمنا جداً</p>
         </div>
 
-        <div className="flex justify-center gap-2 mb-7"
-             onMouseLeave={() => setHoverRating(0)} // Reset hover when mouse leaves
-        >
+        <div className="flex justify-center gap-2 mb-8" onMouseLeave={() => setHoverRating(0)}>
           {[1, 2, 3, 4, 5].map((star) => (
             <button 
               key={star}
               onClick={() => setRating(star)}
               onMouseEnter={() => setHoverRating(star)}
-              className="transition-transform hover:scale-110 focus:outline-none"
+              className="transition-all hover:scale-125 focus:outline-none"
             >
               <Star 
-                className={`w-9 h-9 transition-colors duration-200 
-                            ${(hoverRating >= star || rating >= star) ? 'fill-warning text-warning' : 'text-primary-300'}`} 
+                className={`w-10 h-10 transition-all duration-300 
+                  ${(hoverRating >= star || rating >= star) ? 'fill-yellow-400 text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]' : 'text-slate-100'}`} 
               />
             </button>
           ))}
@@ -61,17 +90,17 @@ export const RatingModal: React.FC<RatingModalProps> = ({ onClose, targetName, t
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          placeholder="اكتب تعليقاً (اختياري)..."
-          className="w-full bg-primary-50 border border-primary-200 rounded-2xl p-4 mb-6 text-sm focus:outline-none focus:border-brand-500 transition-colors text-primary-700 placeholder:text-primary-400"
+          placeholder="أخبرنا المزيد عن تجربتك (اختياري)..."
+          className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 mb-8 text-sm font-bold focus:outline-none focus:border-brand-500 transition-all text-slate-700 placeholder:text-slate-300 resize-none"
           rows={3}
         ></textarea>
 
         <button 
           onClick={handleSubmit}
           disabled={rating === 0 || isSubmitting}
-          className="w-full bg-primary-900 text-white py-3.5 rounded-2xl font-bold text-lg hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-primary-900/20"
+          className="w-full brand-gradient text-white py-5 rounded-[2rem] font-black text-xl shadow-xl shadow-brand-200 disabled:opacity-30 disabled:grayscale transition-all flex items-center justify-center gap-3 active:scale-95"
         >
-          {isSubmitting ? 'جاري الإرسال...' : 'إرسال التقييم'}
+          {isSubmitting ? <Loader2 className="animate-spin" /> : 'إرسال التقييم'}
         </button>
       </div>
     </div>
