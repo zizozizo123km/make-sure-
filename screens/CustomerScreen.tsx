@@ -170,20 +170,20 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
 
       {/* Immersive Header */}
       <header className="sticky top-0 z-[100] bg-white/80 backdrop-blur-2xl border-b border-slate-100 p-6 flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 brand-gradient rounded-2xl flex items-center justify-center shadow-lg shadow-brand-200">
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          <div className="w-12 h-12 brand-gradient rounded-2xl flex items-center justify-center shadow-lg shadow-brand-200 shrink-0">
             <span className="text-white font-black text-2xl">K</span>
           </div>
-          <div>
-            <h2 className="text-lg font-black text-slate-900 leading-none">أهلاً، {profileData.name || userName}</h2>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-black text-slate-900 leading-none truncate">أهلاً، {profileData.name || userName}</h2>
             <div className="flex items-center gap-1 mt-1">
-               <MapPin className="w-3 h-3 text-brand-500" />
-               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">بئر العاتر • حي السلام</span>
+               <MapPin className="w-3 h-3 text-brand-500 shrink-0" />
+               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">بئر العاتر • حي السلام</span>
             </div>
           </div>
         </div>
         {activeStore && (
-          <button onClick={() => setActiveStore(null)} className="bg-slate-50 text-slate-400 p-3 rounded-2xl hover:bg-slate-100 transition-colors">
+          <button onClick={() => setActiveStore(null)} className="bg-slate-50 text-slate-400 p-3 rounded-2xl hover:bg-slate-100 transition-colors mr-2">
             <LogOut className="w-5 h-5" />
           </button>
         )}
@@ -264,8 +264,8 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                                {s.reviewCount && <span className="text-white/50 text-[8px]">({s.reviewCount})</span>}
                             </div>
 
-                            <div className="absolute bottom-6 right-6 text-white text-right">
-                               <h4 className="text-2xl font-black mb-1">{s.name}</h4>
+                            <div className="absolute bottom-6 right-6 text-white text-right max-w-[80%]">
+                               <h4 className="text-2xl font-black mb-1 truncate">{s.name}</h4>
                                <p className="text-xs opacity-80 font-bold flex items-center justify-end gap-1">
                                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400" /> متجر موثوق في العاتر
                                </p>
@@ -287,7 +287,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                   <img src={activeStore.image} className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/40"></div>
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-white text-center p-6">
-                    <h2 className="text-4xl font-black mb-2">{activeStore.name}</h2>
+                    <h2 className="text-4xl font-black mb-2 break-words max-w-full">{activeStore.name}</h2>
                     <div className="flex items-center gap-2">
                       <span className="bg-white/20 backdrop-blur-md px-6 py-2 rounded-full font-bold text-sm">{activeStore.category}</span>
                       <div className="flex items-center gap-1 bg-yellow-400 text-slate-900 px-4 py-2 rounded-full font-black text-xs shadow-lg">
@@ -302,12 +302,12 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                     const item = cart.find(i => i.product.id === p.id);
                     return (
                       <div key={p.id} className="bg-white p-4 rounded-[2.2rem] shadow-sm border border-slate-100 flex gap-5 items-center">
-                        <img src={p.image} className="w-24 h-24 rounded-[1.8rem] object-cover shadow-sm" />
-                        <div className="flex-1 text-right">
-                          <h4 className="font-black text-slate-800 text-lg mb-1">{p.name}</h4>
+                        <img src={p.image} className="w-24 h-24 rounded-[1.8rem] object-cover shadow-sm shrink-0" />
+                        <div className="flex-1 text-right min-w-0">
+                          <h4 className="font-black text-slate-800 text-lg mb-1 truncate">{p.name}</h4>
                           <span className="text-brand-500 font-black text-xl">{formatCurrency(p.price)}</span>
                         </div>
-                        <div className="flex flex-col items-center gap-2">
+                        <div className="flex flex-col items-center gap-2 shrink-0">
                            <button onClick={() => addToCart(p)} className="w-12 h-12 brand-gradient text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all"><Plus /></button>
                            {item && <span className="font-black text-slate-700">{item.quantity}</span>}
                            {item && <button onClick={() => removeFromCart(p.id)} className="w-12 h-12 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center active:scale-90 transition-all"><Minus /></button>}
@@ -326,11 +326,11 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                <div key={o.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-50 relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-2 h-full brand-gradient"></div>
                   <div className="flex justify-between items-start mb-4">
-                     <div>
-                        <h3 className="font-black text-xl text-slate-900">{o.storeName}</h3>
+                     <div className="flex-1 min-w-0">
+                        <h3 className="font-black text-xl text-slate-900 truncate">{o.storeName}</h3>
                         <p className="text-[10px] text-slate-400 font-bold">{new Date(o.timestamp).toLocaleString('ar-DZ')}</p>
                      </div>
-                     <span className={`px-4 py-2 rounded-2xl text-[10px] font-black ${o.status === OrderStatus.DELIVERED ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'}`}>
+                     <span className={`px-4 py-2 rounded-2xl text-[10px] font-black shrink-0 ml-2 ${o.status === OrderStatus.DELIVERED ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'}`}>
                         {o.status === OrderStatus.PENDING ? 'قيد الانتظار' : 
                          o.status === OrderStatus.ACCEPTED_BY_STORE ? 'جاري التحضير' :
                          o.status === OrderStatus.ACCEPTED_BY_DRIVER ? 'في الطريق' : 'تم التوصيل'}
@@ -339,16 +339,16 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                   
                   {o.status === OrderStatus.ACCEPTED_BY_DRIVER && o.driverId && (
                     <div className="mb-6 p-4 bg-brand-50 rounded-2xl border border-brand-100 flex items-center justify-between animate-scale-up">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-brand-500 rounded-full flex items-center justify-center text-white">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-10 h-10 bg-brand-500 rounded-full flex items-center justify-center text-white shrink-0">
                           <Bike className="w-5 h-5" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-[10px] font-black text-brand-600 uppercase">الموصل في الطريق</p>
-                          <p className="font-black text-slate-800">{o.driverName}</p>
+                          <p className="font-black text-slate-800 truncate">{o.driverName}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 shrink-0">
                         <div className="text-left">
                           <p className="text-[8px] text-slate-400 font-bold">سعر التوصيل</p>
                           <p className="text-xs font-black text-brand-600">{formatCurrency(o.deliveryFee)}</p>
@@ -373,7 +373,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                      ) : (
                         <div className="flex -space-x-3 rtl:space-x-reverse">
                            {o.products.slice(0, 3).map((item, i) => (
-                              <img key={i} src={item.product.image} className="w-10 h-10 rounded-full border-2 border-white object-cover shadow-sm" />
+                              <img key={i} src={item.product.image} className="w-10 h-10 rounded-full border-2 border-white object-cover shadow-sm shrink-0" />
                            ))}
                         </div>
                      )}
@@ -383,7 +383,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
           </div>
         ) : (
           <div className="animate-fade-in-up">
-            <div className="bg-white rounded-[3rem] p-8 shadow-sm border border-slate-50 text-center">
+            <div className="bg-white rounded-[3rem] p-8 shadow-sm border border-slate-50 text-center overflow-hidden">
                <div className="relative inline-block mb-8">
                  <div className="w-32 h-32 rounded-full border-8 border-slate-50 shadow-2xl p-2 bg-white mx-auto">
                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profileData.name || userName}`} className="w-full h-full object-cover rounded-full" />
@@ -393,7 +393,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                
                {!isEditingProfile ? (
                  <>
-                   <h3 className="text-3xl font-black text-slate-900 mb-2">{profileData.name || userName}</h3>
+                   <h3 className="text-2xl font-black text-slate-900 mb-2 break-all px-4 leading-tight">{profileData.name || userName}</h3>
                    <div className="flex items-center justify-center gap-2 text-slate-400 font-bold mb-8">
                       <Award className="w-4 h-4 text-brand-500" />
                       <span>زبون ذهبي في كيمو</span>

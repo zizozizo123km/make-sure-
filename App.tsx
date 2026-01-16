@@ -4,21 +4,40 @@ import { AuthScreen } from './screens/AuthScreen';
 import { CustomerScreen } from './screens/CustomerScreen';
 import { StoreScreen } from './screens/StoreScreen';
 import { DriverScreen } from './screens/DriverScreen';
+import { AdminScreen } from './screens/AdminScreen';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { ref, get } from 'firebase/database';
-import { Loader2 } from 'lucide-react';
+import { ref, get, onValue } from 'firebase/database';
+import { Loader2, Lock, AlertTriangle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
   const [userName, setUserName] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [isAdminPath, setIsAdminPath] = useState(window.location.hash === '#admin');
+  const [isLocked, setIsLocked] = useState(false);
+  const [globalMessage, setGlobalMessage] = useState('');
 
   useEffect(() => {
+    // مراقبة تغيير الهاش في الرابط
+    const handleHashChange = () => {
+      setIsAdminPath(window.location.hash === '#admin');
+    };
+    window.addEventListener('hashchange', handleHashChange);
+
+    // مراقبة حالة التطبيق (مفتوح/مغلق) والرسائل العامة
+    const appStateRef = ref(db, 'app_settings');
+    onValue(appStateRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        setIsLocked(data.isLocked || false);
+        setGlobalMessage(data.globalMessage || '');
+      }
+    });
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          // Check in 'customers' node
           const customerSnapshot = await get(ref(db, `customers/${user.uid}`));
           if (customerSnapshot.exists()) {
             const data = customerSnapshot.val();
@@ -27,7 +46,6 @@ const App: React.FC = () => {
             return;
           }
 
-          // Check in 'stores' node
           const storeSnapshot = await get(ref(db, `stores/${user.uid}`));
           if (storeSnapshot.exists()) {
             const data = storeSnapshot.val();
@@ -36,7 +54,6 @@ const App: React.FC = () => {
             return;
           }
 
-          // Check in 'drivers' node
           const driverSnapshot = await get(ref(db, `drivers/${user.uid}`));
           if (driverSnapshot.exists()) {
             const data = driverSnapshot.val();
@@ -45,15 +62,11 @@ const App: React.FC = () => {
             return;
           }
 
-          // If not found in specific nodes (or error), fallback to local storage
           fallbackToLocalData();
-          
         } catch (error: any) {
-          console.warn("Database access failed, using Local Storage fallback.");
           fallbackToLocalData();
         }
       } else {
-        // User is signed out
         setCurrentRole(null);
         setUserName('');
         localStorage.removeItem('kimo_user_role');
@@ -62,7 +75,10 @@ const App: React.FC = () => {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      window.removeEventListener('hashchange', handleHashChange);
+    };
   }, []);
 
   const updateSession = (role: UserRole, name: string) => {
@@ -75,16 +91,9 @@ const App: React.FC = () => {
   const fallbackToLocalData = () => {
     const savedRole = localStorage.getItem('kimo_user_role') as UserRole;
     const savedName = localStorage.getItem('kimo_user_name');
-    
-    if (savedRole) {
-      setCurrentRole(savedRole);
-    } else {
-      setCurrentRole(null);
-    }
-
-    if (savedName) {
-      setUserName(savedName);
-    }
+    if (savedRole) setCurrentRole(savedRole);
+    else setCurrentRole(null);
+    if (savedName) setUserName(savedName);
   };
 
   const handleLogout = async () => {
@@ -100,17 +109,36 @@ const App: React.FC = () => {
   };
 
   const handleManualLogin = (role: UserRole, name?: string) => {
-    // Called by AuthScreen for immediate update
     updateSession(role, name || '');
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-primary-900">
-        <div className="relative flex items-center justify-center">
-          <Loader2 className="w-16 h-16 text-brand-500 animate-spin-slow" />
-          <div className="absolute w-24 h-24 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+        <Loader2 className="w-12 h-12 text-orange-500 animate-spin" />
+      </div>
+    );
+  }
+
+  // إذا كان المستخدم في صفحة الأدمن، نظهرها له بغض النظر عن حالة غلق التطبيق
+  if (isAdminPath) {
+    return <AdminScreen onExit={() => { window.location.hash = ''; setIsAdminPath(false); }} />;
+  }
+
+  // إذا كان التطبيق مغلقاً، نظهر شاشة الصيانة لجميع المستخدمين عدا الأدمن
+  if (isLocked && auth.currentUser?.email !== 'downloader@gmail.com') {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center font-cairo">
+        <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
+          <Lock className="w-12 h-12 text-red-500" />
         </div>
+        <h1 className="text-3xl font-black text-white mb-4">التطبيق مغلق حالياً</h1>
+        <p className="text-slate-400 font-bold max-w-xs mx-auto mb-8">نحن نقوم ببعض التحديثات الضرورية لتحسين تجربة كيمو. سنعود قريباً!</p>
+        {globalMessage && (
+          <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl text-orange-400 font-bold text-sm">
+            رسالة من الإدارة: {globalMessage}
+          </div>
+        )}
       </div>
     );
   }
@@ -118,7 +146,16 @@ const App: React.FC = () => {
   const renderScreen = () => {
     switch (currentRole) {
       case UserRole.CUSTOMER:
-        return <CustomerScreen userName={userName} onLogout={handleLogout} />;
+        return (
+          <>
+            {globalMessage && (
+              <div className="bg-orange-500 text-white p-2 text-center text-[10px] font-black animate-pulse z-[1000] sticky top-0">
+                {globalMessage}
+              </div>
+            )}
+            <CustomerScreen userName={userName} onLogout={handleLogout} />
+          </>
+        );
       case UserRole.STORE:
         return <StoreScreen userName={userName} onLogout={handleLogout} />;
       case UserRole.DRIVER:
