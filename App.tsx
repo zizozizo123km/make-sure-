@@ -16,6 +16,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setLoading(true);
       if (user) {
         try {
           // Check in 'customers' node
@@ -45,19 +46,23 @@ const App: React.FC = () => {
             return;
           }
 
-          // If not found in specific nodes (or error), fallback to local storage
-          fallbackToLocalData();
+          // Fallback to local storage if not found in DB
+          const savedRole = localStorage.getItem('kimo_user_role') as UserRole;
+          const savedName = localStorage.getItem('kimo_user_name');
+          if (savedRole) {
+            setCurrentRole(savedRole);
+            setUserName(savedName || 'مستخدم');
+          } else {
+            setCurrentRole(null);
+          }
           
         } catch (error: any) {
-          console.warn("Database access failed, using Local Storage fallback.");
-          fallbackToLocalData();
+          console.error("Auth sync error:", error);
+          setCurrentRole(null);
         }
       } else {
-        // User is signed out
         setCurrentRole(null);
         setUserName('');
-        localStorage.removeItem('kimo_user_role');
-        localStorage.removeItem('kimo_user_name');
       }
       setLoading(false);
     });
@@ -69,22 +74,7 @@ const App: React.FC = () => {
     setCurrentRole(role);
     setUserName(name || 'مستخدم');
     localStorage.setItem('kimo_user_role', role);
-    localStorage.setItem('kimo_user_name', name);
-  };
-
-  const fallbackToLocalData = () => {
-    const savedRole = localStorage.getItem('kimo_user_role') as UserRole;
-    const savedName = localStorage.getItem('kimo_user_name');
-    
-    if (savedRole) {
-      setCurrentRole(savedRole);
-    } else {
-      setCurrentRole(null);
-    }
-
-    if (savedName) {
-      setUserName(savedName);
-    }
+    localStorage.setItem('kimo_user_name', name || '');
   };
 
   const handleLogout = async () => {
@@ -100,17 +90,19 @@ const App: React.FC = () => {
   };
 
   const handleManualLogin = (role: UserRole, name?: string) => {
-    // Called by AuthScreen for immediate update
     updateSession(role, name || '');
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-primary-900">
-        <div className="relative flex items-center justify-center">
-          <Loader2 className="w-16 h-16 text-brand-500 animate-spin-slow" />
-          <div className="absolute w-24 h-24 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 font-cairo">
+        <div className="relative mb-8">
+          <div className="w-24 h-24 brand-gradient rounded-[2rem] flex items-center justify-center shadow-2xl animate-float">
+            <span className="text-white text-5xl font-black italic">K</span>
+          </div>
+          <div className="absolute inset-0 w-24 h-24 border-4 border-brand-500 border-t-transparent rounded-[2rem] animate-spin"></div>
         </div>
+        <h2 className="text-white font-black text-2xl tracking-widest animate-pulse">كيمو جاري التحميل...</h2>
       </div>
     );
   }
@@ -129,7 +121,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="font-sans antialiased text-primary-900 bg-primary-50 min-h-screen">
+    <div className="font-sans antialiased bg-[#F8FAFC] min-h-screen">
        {renderScreen()}
     </div>
   );
