@@ -1,4 +1,5 @@
-const CACHE_NAME = 'kimo-app-v1';
+
+const CACHE_NAME = 'kimo-app-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -9,25 +10,21 @@ const ASSETS_TO_CACHE = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
 ];
 
-// تثبيت الـ Service Worker وتخزين الملفات الأساسية
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('Kimo Service Worker: Caching essential assets');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
   self.skipWaiting();
 });
 
-// تفعيل الـ Service Worker وتنظيف الـ Cache القديم
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log('Kimo Service Worker: Removing old cache', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -37,22 +34,25 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// التعامل مع طلبات الملفات (Offline Support)
+// التعامل مع طلبات الملفات
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  
   event.respondWith(
     caches.match(event.request).then((response) => {
-      // إرجاع الملف من الـ Cache إذا وجد، وإلا جلبه من الشبكة
       return response || fetch(event.request).then((fetchResponse) => {
-        return caches.open(CACHE_NAME).then((cache) => {
-          // تخزين الملفات الجديدة تلقائياً (مثل الصور)
-          if (event.request.url.startsWith('http')) {
-            cache.put(event.request, fetchResponse.clone());
-          }
+        if (!fetchResponse || fetchResponse.status !== 200 || fetchResponse.type !== 'basic') {
           return fetchResponse;
+        }
+        const responseToCache = fetchResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          if (event.request.url.startsWith('http')) {
+            cache.put(event.request, responseToCache);
+          }
         });
+        return fetchResponse;
       });
     }).catch(() => {
-      // في حالة فشل الشبكة تماماً وعدم وجود الملف في الـ Cache
       if (event.request.mode === 'navigate') {
         return caches.match('/index.html');
       }
@@ -60,18 +60,32 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// استقبال الإشعارات الفورية من لوحة التحكم (Admin Push)
+// إستقبال إشعارات الدفع (Push Notifications) مثل فيسبوك
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'تنبيه جديد من كيمو', body: 'لديك إشعار جديد في التطبيق!' };
+  let data = { title: 'كيمو - إشعار جديد', body: 'لديك تحديث جديد في التطبيق!' };
   
+  try {
+    if (event.data) {
+      data = event.data.json();
+    }
+  } catch (e) {
+    if (event.data) {
+      data = { title: 'كيمو', body: event.data.text() };
+    }
+  }
+
   const options = {
     body: data.body,
-    icon: '/vite.svg', // يمكنك تغييرها لأيقونة التطبيق
-    badge: '/vite.svg',
-    vibrate: [100, 50, 100],
+    icon: 'https://res.cloudinary.com/dkqxgwjnr/image/upload/v1710000000/kimo_logo.png', // رابط لوغو كيمو
+    badge: 'https://res.cloudinary.com/dkqxgwjnr/image/upload/v1710000000/kimo_badge.png',
+    vibrate: [200, 100, 200, 100, 200], // نمط اهتزاز احترافي
     data: {
       url: self.location.origin
-    }
+    },
+    actions: [
+      { action: 'open', title: 'فتح التطبيق' },
+      { action: 'close', title: 'تجاهل' }
+    ]
   };
 
   event.waitUntil(
@@ -79,10 +93,24 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// فتح التطبيق عند النقر على الإشعار
+// التعامل مع النقر على الإشعار
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  
+  if (event.action === 'close') return;
+
   event.waitUntil(
-    clients.openWindow(event.notification.data.url)
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      if (clientList.length > 0) {
+        let client = clientList[0];
+        for (let i = 0; i < clientList.length; i++) {
+          if (clientList[i].focused) {
+            client = clientList[i];
+          }
+        }
+        return client.focus();
+      }
+      return clients.openWindow(event.notification.data.url);
+    })
   );
 });

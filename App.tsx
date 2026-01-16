@@ -9,7 +9,7 @@ import { AdminScreen } from './screens/AdminScreen';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { ref, get, onValue } from 'firebase/database';
-import { Loader2, Lock, Bell, X, Sparkles, Megaphone } from 'lucide-react';
+import { Loader2, Lock, Bell, X, Sparkles, Megaphone, BellRing } from 'lucide-react';
 import getFCMToken from './services/fcmService';
 
 const App: React.FC = () => {
@@ -21,16 +21,21 @@ const App: React.FC = () => {
   const [globalMessage, setGlobalMessage] = useState('');
   const [lastBroadcast, setLastBroadcast] = useState<number>(0);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [notifPermissionStatus, setNotifPermissionStatus] = useState<NotificationPermission>('default');
 
   const ADMIN_EMAIL = 'downloader@gmail.com';
 
   useEffect(() => {
+    // التحقق من حالة إذن الإشعارات
+    if ('Notification' in window) {
+      setNotifPermissionStatus(Notification.permission);
+    }
+
     const handleHashChange = () => {
       setIsAdminPath(window.location.hash === '#admin');
     };
     window.addEventListener('hashchange', handleHashChange);
 
-    // مراقبة إعدادات التطبيق من قاعدة البيانات
     const appStateRef = ref(db, 'app_settings');
     onValue(appStateRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -41,7 +46,6 @@ const App: React.FC = () => {
         const dbLastBroadcast = data.lastBroadcast || 0;
         setLastBroadcast(dbLastBroadcast);
 
-        // التحقق مما إذا كان هذا الإشعار جديداً بالنسبة للمستخدم
         const localLastSeen = Number(localStorage.getItem('kimo_last_seen_broadcast') || 0);
         if (dbLastBroadcast > localLastSeen && data.globalMessage) {
           setShowNotificationModal(true);
@@ -52,7 +56,6 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          // البحث عن دور المستخدم في الجداول الثلاثة
           const customerSnapshot = await get(ref(db, `customers/${user.uid}`));
           if (customerSnapshot.exists()) {
             const data = customerSnapshot.val();
@@ -99,6 +102,15 @@ const App: React.FC = () => {
     };
   }, []);
 
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) return;
+    const permission = await Notification.requestPermission();
+    setNotifPermissionStatus(permission);
+    if (permission === 'granted') {
+      getFCMToken(currentRole || undefined);
+    }
+  };
+
   const updateSession = (role: UserRole, name: string) => {
     setCurrentRole(role);
     setUserName(name || 'مستخدم');
@@ -136,7 +148,6 @@ const App: React.FC = () => {
 
   const closeNotification = () => {
     setShowNotificationModal(false);
-    // حفظ وقت المشاهدة لعدم تكرار الإشعار نفسه
     localStorage.setItem('kimo_last_seen_broadcast', lastBroadcast.toString());
   };
 
@@ -148,12 +159,10 @@ const App: React.FC = () => {
     );
   }
 
-  // وضع المسؤول (Admin Path)
   if (isAdminPath) {
     return <AdminScreen onExit={() => { window.location.hash = ''; setIsAdminPath(false); }} />;
   }
 
-  // وضع الصيانة (Lock Mode) - يستثنى منه بريد المسؤول
   if (isLocked && auth.currentUser?.email !== ADMIN_EMAIL) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center font-cairo">
@@ -187,7 +196,23 @@ const App: React.FC = () => {
   return (
     <div className="font-sans antialiased text-primary-900 bg-primary-50 min-h-screen selection:bg-orange-200">
       
-      {/* نافذة الإشعار المنبثقة (In-App Popup Modal) */}
+      {/* شريط طلب تفعيل الإشعارات - يظهر إذا كان الإذن غير معطى */}
+      {currentRole && notifPermissionStatus !== 'granted' && (
+        <div className="bg-slate-900 text-white p-3 flex items-center justify-between px-6 sticky top-0 z-[1000] border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <BellRing className="w-5 h-5 text-orange-500 animate-bounce" />
+            <p className="text-[10px] font-black">فعل الإشعارات لتوصلك رسائل المسؤول والطلبات فوراً!</p>
+          </div>
+          <button 
+            onClick={requestNotificationPermission}
+            className="bg-orange-500 text-white px-4 py-1.5 rounded-full text-[10px] font-black shadow-lg active:scale-90 transition-all"
+          >
+            تفعيل الآن
+          </button>
+        </div>
+      )}
+
+      {/* نافذة الإشعار المنبثقة */}
       {showNotificationModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-xl animate-fade-in">
           <div className="w-full max-w-sm bg-white rounded-[3.5rem] p-10 relative shadow-2xl animate-scale-up border border-white">
@@ -225,7 +250,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* المحتوى الرئيسي */}
       {renderScreen()}
     </div>
   );
