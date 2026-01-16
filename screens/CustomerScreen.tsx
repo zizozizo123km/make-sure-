@@ -6,7 +6,8 @@ import { ref, onValue, push, set, update } from 'firebase/database';
 import { 
   Search, Plus, Minus, ShoppingCart, MapPin, Loader2, Home, User, 
   Camera, LogOut, ClipboardList, Trash2, Star, ShieldCheck, Award,
-  Utensils, Shirt, Smartphone, Briefcase, Baby, LayoutGrid, Save, RefreshCw
+  Utensils, Shirt, Smartphone, Briefcase, Baby, LayoutGrid, Save, RefreshCw,
+  Phone, Bike
 } from 'lucide-react';
 import { RatingModal } from '../components/RatingModal';
 
@@ -129,7 +130,10 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
       storeId: activeStore.id, storeName: activeStore.name,
       products: cart, totalPrice: grandTotal, deliveryFee: 200,
       status: OrderStatus.PENDING, timestamp: Date.now(),
-      address: "بئر العاتر، حي السلام"
+      address: "بئر العاتر، حي السلام",
+      customerPhone: profileData.phone || '',
+      storePhone: activeStore.phone || '',
+      storeCoordinates: activeStore.coordinates
     };
     try {
       await set(push(ref(db, 'orders')), orderData);
@@ -333,6 +337,29 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                      </span>
                   </div>
                   
+                  {o.status === OrderStatus.ACCEPTED_BY_DRIVER && o.driverId && (
+                    <div className="mb-6 p-4 bg-brand-50 rounded-2xl border border-brand-100 flex items-center justify-between animate-scale-up">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-brand-500 rounded-full flex items-center justify-center text-white">
+                          <Bike className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-brand-600 uppercase">الموصل في الطريق</p>
+                          <p className="font-black text-slate-800">{o.driverName}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-left">
+                          <p className="text-[8px] text-slate-400 font-bold">سعر التوصيل</p>
+                          <p className="text-xs font-black text-brand-600">{formatCurrency(o.deliveryFee)}</p>
+                        </div>
+                        <a href={`tel:${o.driverPhone}`} className="w-10 h-10 bg-white text-brand-500 rounded-full flex items-center justify-center shadow-sm border border-brand-100 active:scale-90 transition-all">
+                          <Phone className="w-4 h-4" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex justify-between items-center border-t border-slate-50 pt-6">
                      <span className="text-brand-500 font-black text-xl">{formatCurrency(o.totalPrice)}</span>
                      

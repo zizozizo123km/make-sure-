@@ -46,19 +46,20 @@ export interface StoreProfile {
   location: string;
   coordinates: Coordinates;
   image: string;
-  phone?: string; // أضفنا رقم الهاتف هنا
+  phone?: string; 
 }
 
 export interface Order {
   id: string;
   customerId: string;
   customerName: string;
-  customerPhone?: string; // أضفنا رقم هاتف الزبون
+  customerPhone?: string; 
   storeId: string;
   storeName: string;
-  storePhone?: string; // أضفنا رقم هاتف المتجر
+  storePhone?: string; 
   driverId?: string;
   driverName?: string;
+  driverPhone?: string; // أضفنا رقم هاتف الموصل هنا
   products: {product: Product, quantity: number}[];
   totalPrice: number;
   deliveryFee: number;

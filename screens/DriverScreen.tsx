@@ -97,7 +97,8 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
       await update(ref(db, `orders/${orderId}`), {
           status: OrderStatus.ACCEPTED_BY_DRIVER,
           driverId: currentDriverId,
-          driverName: driverProfile?.name || userName
+          driverName: driverProfile?.name || userName,
+          driverPhone: driverProfile?.phone || '' // إرسال رقم هاتف السائق مع الطلبية
       });
       setActiveTab('ACTIVE');
   };

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Category, Product, Order, OrderStatus, StoreProfile } from '../types';
 import { db, auth } from '../services/firebase';
 import { ref, push, set, onValue, remove, update } from 'firebase/database';
-import { Package, Plus, Upload, Loader2, Trash2, ArrowLeft, ClipboardList, CheckCircle, Camera, LogOut, User, RefreshCw, Phone } from 'lucide-react';
+import { Package, Plus, Upload, Loader2, Trash2, ArrowLeft, ClipboardList, CheckCircle, Camera, LogOut, User, RefreshCw, Phone, Tag } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 
 interface StoreScreenProps {
@@ -170,6 +170,7 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                   <div key={p.id} className="bg-white p-4 rounded-[2rem] shadow-sm border border-gray-100 flex gap-4 items-center">
                     <div className="flex-1 text-right py-1">
                       <h4 className="font-bold text-[#8E949A] text-sm mb-2">{p.name}</h4>
+                      <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-md ml-2">{p.category}</span>
                       <span className="text-lg font-black text-[#F9923B]">{formatCurrency(p.price)}</span>
                       <button onClick={() => remove(ref(db, `products/${p.id}`))} className="block mt-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>
                     </div>
@@ -189,9 +190,36 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                         if (file) { setIsUploading(true); uploadImage(file).then(url => { if (url) setNewProduct({...newProduct, image: url}); setIsUploading(false); }); }
                      }} className="hidden" accept="image/*" />
                    </div>
-                   <input type="text" placeholder="اسم المنتج" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none" />
-                   <input type="number" placeholder="السعر" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none" />
-                   <button onClick={saveProduct} disabled={isSaving || isUploading} className="w-full bg-[#2B2F3B] text-white py-4 rounded-2xl font-black shadow-lg">حفظ المنتج</button>
+                   
+                   <div className="space-y-2">
+                     <label className="text-xs font-black text-slate-400 pr-2">اسم المنتج</label>
+                     <input type="text" placeholder="مثلاً: بيتزا مارغريتا" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border border-transparent focus:border-orange-500 transition-all" />
+                   </div>
+
+                   <div className="space-y-2">
+                     <label className="text-xs font-black text-slate-400 pr-2">السعر (د.ج)</label>
+                     <input type="number" placeholder="500" value={newProduct.price || ''} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border border-transparent focus:border-orange-500 transition-all" />
+                   </div>
+
+                   <div className="space-y-2">
+                     <label className="text-xs font-black text-slate-400 pr-2">فئة المنتج</label>
+                     <div className="relative">
+                       <select 
+                         value={newProduct.category} 
+                         onChange={e => setNewProduct({...newProduct, category: e.target.value as Category})}
+                         className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none border border-transparent focus:border-orange-500 transition-all appearance-none cursor-pointer"
+                       >
+                         {Object.values(Category).map((cat) => (
+                           <option key={cat} value={cat}>{cat}</option>
+                         ))}
+                       </select>
+                       <Tag className="absolute left-4 top-4 text-slate-300 w-5 h-5 pointer-events-none" />
+                     </div>
+                   </div>
+
+                   <button onClick={saveProduct} disabled={isSaving || isUploading} className="w-full bg-[#2B2F3B] text-white py-5 rounded-[2rem] font-black shadow-lg hover:bg-slate-800 transition-all mt-4 flex items-center justify-center gap-3">
+                     {isSaving ? <Loader2 className="animate-spin" /> : 'حفظ المنتج'}
+                   </button>
                 </div>
               </div>
             )}
