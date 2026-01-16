@@ -15,10 +15,14 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // مراقبة حالة المصادقة من Firebase
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setLoading(true);
       if (user) {
         try {
-          // Check in 'customers' node
+          // محاولة جلب الدور من قاعدة البيانات (الأكثر دقة)
+          
+          // 1. تحقق من فئة الزبائن
           const customerSnapshot = await get(ref(db, `customers/${user.uid}`));
           if (customerSnapshot.exists()) {
             const data = customerSnapshot.val();
@@ -27,7 +31,7 @@ const App: React.FC = () => {
             return;
           }
 
-          // Check in 'stores' node
+          // 2. تحقق من فئة المتاجر
           const storeSnapshot = await get(ref(db, `stores/${user.uid}`));
           if (storeSnapshot.exists()) {
             const data = storeSnapshot.val();
@@ -36,7 +40,7 @@ const App: React.FC = () => {
             return;
           }
 
-          // Check in 'drivers' node
+          // 3. تحقق من فئة السائقين
           const driverSnapshot = await get(ref(db, `drivers/${user.uid}`));
           if (driverSnapshot.exists()) {
             const data = driverSnapshot.val();
@@ -45,19 +49,16 @@ const App: React.FC = () => {
             return;
           }
 
-          // If not found in specific nodes (or error), fallback to local storage
+          // إذا لم يتم العثور على الدور في قاعدة البيانات، نعتمد على الذاكرة المحلية كحل أخير
           fallbackToLocalData();
           
         } catch (error: any) {
-          console.warn("Database access failed, using Local Storage fallback.");
+          console.error("خطأ في جلب بيانات المستخدم:", error);
           fallbackToLocalData();
         }
       } else {
-        // User is signed out
-        setCurrentRole(null);
-        setUserName('');
-        localStorage.removeItem('kimo_user_role');
-        localStorage.removeItem('kimo_user_name');
+        // إذا لم يكن هناك مستخدم مسجل دخول (أو قام بالخروج)
+        clearSession();
       }
       setLoading(false);
     });
@@ -67,9 +68,16 @@ const App: React.FC = () => {
 
   const updateSession = (role: UserRole, name: string) => {
     setCurrentRole(role);
-    setUserName(name || 'مستخدم');
+    setUserName(name || 'مستخدم كيمو');
     localStorage.setItem('kimo_user_role', role);
-    localStorage.setItem('kimo_user_name', name);
+    localStorage.setItem('kimo_user_name', name || '');
+  };
+
+  const clearSession = () => {
+    setCurrentRole(null);
+    setUserName('');
+    localStorage.removeItem('kimo_user_role');
+    localStorage.removeItem('kimo_user_name');
   };
 
   const fallbackToLocalData = () => {
@@ -78,38 +86,31 @@ const App: React.FC = () => {
     
     if (savedRole) {
       setCurrentRole(savedRole);
+      setUserName(savedName || 'مستخدم');
     } else {
-      setCurrentRole(null);
-    }
-
-    if (savedName) {
-      setUserName(savedName);
+      clearSession();
     }
   };
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      localStorage.removeItem('kimo_user_role');
-      localStorage.removeItem('kimo_user_name');
-      setCurrentRole(null);
-      setUserName('');
+      clearSession();
     } catch (error) {
-      console.error("Error signing out:", error);
+      console.error("خطأ أثناء تسجيل الخروج:", error);
     }
   };
 
   const handleManualLogin = (role: UserRole, name?: string) => {
-    // Called by AuthScreen for immediate update
     updateSession(role, name || '');
   };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-primary-900">
-        <div className="relative flex items-center justify-center">
-          <Loader2 className="w-16 h-16 text-brand-500 animate-spin-slow" />
-          <div className="absolute w-24 h-24 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="relative flex flex-col items-center">
+          <Loader2 className="w-16 h-16 text-brand-500 animate-spin" />
+          <p className="text-white mt-4 font-bold animate-pulse">جاري التحميل...</p>
         </div>
       </div>
     );
