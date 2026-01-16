@@ -8,7 +8,8 @@ import { AdminScreen } from './screens/AdminScreen';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { ref, get, onValue } from 'firebase/database';
-import { Loader2, Lock, AlertTriangle, Bell } from 'lucide-react';
+import { Loader2, Lock, Bell } from 'lucide-react';
+import getFCMToken from './services/fcmService';
 
 const App: React.FC = () => {
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
@@ -19,13 +20,11 @@ const App: React.FC = () => {
   const [globalMessage, setGlobalMessage] = useState('');
 
   useEffect(() => {
-    // مراقبة تغيير الهاش في الرابط
     const handleHashChange = () => {
       setIsAdminPath(window.location.hash === '#admin');
     };
     window.addEventListener('hashchange', handleHashChange);
 
-    // مراقبة حالة التطبيق (مفتوح/مغلق) والرسائل العامة
     const appStateRef = ref(db, 'app_settings');
     onValue(appStateRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -42,6 +41,7 @@ const App: React.FC = () => {
           if (customerSnapshot.exists()) {
             const data = customerSnapshot.val();
             updateSession(UserRole.CUSTOMER, data.name);
+            getFCMToken(UserRole.CUSTOMER);
             setLoading(false);
             return;
           }
@@ -50,6 +50,7 @@ const App: React.FC = () => {
           if (storeSnapshot.exists()) {
             const data = storeSnapshot.val();
             updateSession(UserRole.STORE, data.name);
+            getFCMToken(UserRole.STORE);
             setLoading(false);
             return;
           }
@@ -58,6 +59,7 @@ const App: React.FC = () => {
           if (driverSnapshot.exists()) {
             const data = driverSnapshot.val();
             updateSession(UserRole.DRIVER, data.name);
+            getFCMToken(UserRole.DRIVER);
             setLoading(false);
             return;
           }
@@ -91,7 +93,10 @@ const App: React.FC = () => {
   const fallbackToLocalData = () => {
     const savedRole = localStorage.getItem('kimo_user_role') as UserRole;
     const savedName = localStorage.getItem('kimo_user_name');
-    if (savedRole) setCurrentRole(savedRole);
+    if (savedRole) {
+      setCurrentRole(savedRole);
+      getFCMToken(savedRole);
+    }
     else setCurrentRole(null);
     if (savedName) setUserName(savedName);
   };
@@ -110,6 +115,7 @@ const App: React.FC = () => {
 
   const handleManualLogin = (role: UserRole, name?: string) => {
     updateSession(role, name || '');
+    getFCMToken(role);
   };
 
   if (loading) {
@@ -120,12 +126,10 @@ const App: React.FC = () => {
     );
   }
 
-  // إذا كان المستخدم في صفحة الأدمن، نظهرها له بغض النظر عن حالة غلق التطبيق
   if (isAdminPath) {
     return <AdminScreen onExit={() => { window.location.hash = ''; setIsAdminPath(false); }} />;
   }
 
-  // إذا كان التطبيق مغلقاً، نظهر شاشة الصيانة لجميع المستخدمين عدا الأدمن
   if (isLocked && auth.currentUser?.email !== 'downloader@gmail.com') {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center font-cairo">
@@ -133,16 +137,7 @@ const App: React.FC = () => {
           <Lock className="w-12 h-12 text-red-500" />
         </div>
         <h1 className="text-3xl font-black text-white mb-4">التطبيق مغلق حالياً</h1>
-        <p className="text-slate-400 font-bold max-w-xs mx-auto mb-8">نحن نقوم ببعض التحديثات الضرورية لتحسين تجربة كيمو. سنعود قريباً!</p>
-        {globalMessage && (
-          <div className="bg-slate-800 border border-slate-700 p-6 rounded-[2rem] text-orange-400 font-bold text-sm shadow-2xl flex items-center gap-4 max-w-sm">
-            <Bell className="w-8 h-8 shrink-0 text-orange-500" />
-            <div className="text-right">
-               <p className="text-[10px] uppercase tracking-widest opacity-50 mb-1">رسالة من الإدارة</p>
-               <p>{globalMessage}</p>
-            </div>
-          </div>
-        )}
+        <p className="text-slate-400 font-bold max-w-xs mx-auto mb-8">نحن نقوم ببعض التحديثات الضرورية لتحسين تجربة كيمو.</p>
       </div>
     );
   }
@@ -162,7 +157,6 @@ const App: React.FC = () => {
 
   return (
     <div className="font-sans antialiased text-primary-900 bg-primary-50 min-h-screen">
-       {/* عرض الإشعار العام فوق كل الشاشات إذا كان موجوداً والمستخدم مسجل دخول */}
        {currentRole && globalMessage && (
           <div className="bg-orange-500 text-white p-3 text-center text-xs font-black animate-pulse z-[2000] sticky top-0 shadow-lg flex items-center justify-center gap-2">
             <Bell className="w-4 h-4" />
