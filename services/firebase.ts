@@ -1,7 +1,10 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getDatabase } from "firebase/database";
 
+import { initializeApp } from "firebase/app";
+import { getDatabase } from "firebase/database";
+import { getAnalytics, isSupported } from "firebase/analytics";
+import { getAuth } from "firebase/auth";
+
+// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyAmPFwV1ld4H6CWukHtEoKPg9E2tHWkyxE",
   authDomain: "not-b25f1.firebaseapp.com",
@@ -13,13 +16,17 @@ const firebaseConfig = {
   measurementId: "G-9PLRDRTYND"
 };
 
-// Initialize Firebase once
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 
-// Export services directly.
-// These functions correctly register the components within the initialized app.
-export const auth = getAuth(app);
+// Initialize analytics conditionally to prevent registration errors
+let analytics = null;
+isSupported().then((supported) => {
+  if (supported) {
+    analytics = getAnalytics(app);
+  }
+}).catch(err => console.error("Firebase Analytics not supported:", err));
+
 export const db = getDatabase(app);
-
-// Exporting null for analytics as it's not being utilized in this version.
-export const analytics = null;
+export const auth = getAuth(app);
+export { analytics };
