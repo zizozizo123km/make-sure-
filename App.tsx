@@ -8,7 +8,7 @@ import { AdminScreen } from './screens/AdminScreen';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { ref, get, onValue } from 'firebase/database';
-import { Loader2, Lock, AlertTriangle } from 'lucide-react';
+import { Loader2, Lock, AlertTriangle, Bell } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
@@ -135,8 +135,12 @@ const App: React.FC = () => {
         <h1 className="text-3xl font-black text-white mb-4">التطبيق مغلق حالياً</h1>
         <p className="text-slate-400 font-bold max-w-xs mx-auto mb-8">نحن نقوم ببعض التحديثات الضرورية لتحسين تجربة كيمو. سنعود قريباً!</p>
         {globalMessage && (
-          <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl text-orange-400 font-bold text-sm">
-            رسالة من الإدارة: {globalMessage}
+          <div className="bg-slate-800 border border-slate-700 p-6 rounded-[2rem] text-orange-400 font-bold text-sm shadow-2xl flex items-center gap-4 max-w-sm">
+            <Bell className="w-8 h-8 shrink-0 text-orange-500" />
+            <div className="text-right">
+               <p className="text-[10px] uppercase tracking-widest opacity-50 mb-1">رسالة من الإدارة</p>
+               <p>{globalMessage}</p>
+            </div>
           </div>
         )}
       </div>
@@ -146,16 +150,7 @@ const App: React.FC = () => {
   const renderScreen = () => {
     switch (currentRole) {
       case UserRole.CUSTOMER:
-        return (
-          <>
-            {globalMessage && (
-              <div className="bg-orange-500 text-white p-2 text-center text-[10px] font-black animate-pulse z-[1000] sticky top-0">
-                {globalMessage}
-              </div>
-            )}
-            <CustomerScreen userName={userName} onLogout={handleLogout} />
-          </>
-        );
+        return <CustomerScreen userName={userName} onLogout={handleLogout} />;
       case UserRole.STORE:
         return <StoreScreen userName={userName} onLogout={handleLogout} />;
       case UserRole.DRIVER:
@@ -167,6 +162,13 @@ const App: React.FC = () => {
 
   return (
     <div className="font-sans antialiased text-primary-900 bg-primary-50 min-h-screen">
+       {/* عرض الإشعار العام فوق كل الشاشات إذا كان موجوداً والمستخدم مسجل دخول */}
+       {currentRole && globalMessage && (
+          <div className="bg-orange-500 text-white p-3 text-center text-xs font-black animate-pulse z-[2000] sticky top-0 shadow-lg flex items-center justify-center gap-2">
+            <Bell className="w-4 h-4" />
+            {globalMessage}
+          </div>
+       )}
        {renderScreen()}
     </div>
   );
