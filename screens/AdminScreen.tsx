@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, update, remove, set } from 'firebase/database';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { 
   ShieldCheck, Users, Store, Bike, Lock, Unlock, 
   Send, Loader2, ArrowLeft, LogOut, Bell, Settings,
@@ -38,6 +38,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
   const [successAction, setSuccessAction] = useState<string | null>(null);
 
   const ADMIN_EMAIL = 'downloader@gmail.com';
+  const ADMIN_PASSWORD = 'zizozizo';
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -97,26 +98,37 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     setIsLoading(true);
     setError('');
     
-    // التحقق من البريد الإلكتروني قبل محاولة تسجيل الدخول
-    if (loginForm.email !== ADMIN_EMAIL) {
+    // التحقق من أن البيانات المدخلة مطابقة للمسؤول
+    if (loginForm.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
       setError('هذا البريد غير مخول للدخول كمسؤول');
       setIsLoading(false);
       return;
     }
 
+    if (loginForm.password !== ADMIN_PASSWORD) {
+      setError('كلمة السر غير صحيحة');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      // تسجيل الدخول الفعلي في Firebase للحصول على التوكن والصلاحيات
-      await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
-      setIsAuthenticated(true);
-    } catch (err: any) {
-      console.error("Admin Login Error:", err);
-      if (err.code === 'auth/wrong-password') {
-        setError('كلمة السر غير صحيحة');
-      } else if (err.code === 'auth/user-not-found') {
-        setError('حساب المسؤول غير موجود في قاعدة البيانات');
-      } else {
-        setError('خطأ في الاتصال أو بيانات غير صحيحة');
+      // محاولة تسجيل الدخول
+      try {
+        await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
+        setIsAuthenticated(true);
+      } catch (err: any) {
+        // إذا كان الخطأ هو "المستخدم غير موجود"، نقوم بإنشائه فوراً
+        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+          console.log("Creating Admin Account for the first time...");
+          await createUserWithEmailAndPassword(auth, loginForm.email, loginForm.password);
+          setIsAuthenticated(true);
+        } else {
+          throw err;
+        }
       }
+    } catch (err: any) {
+      console.error("Admin Auth Error:", err);
+      setError('حدث خطأ أثناء الاتصال بـ Firebase: ' + err.message);
     } finally {
       setIsLoading(false);
     }
@@ -297,7 +309,6 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                 </div>
              </div>
            )}
-           {/* باقي التبويبات تظهر هنا بناءً على الـ activeTab (المستخدمين، المتاجر، الخ) */}
         </div>
       </main>
     </div>
