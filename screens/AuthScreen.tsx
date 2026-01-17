@@ -1,10 +1,10 @@
+
 import React, { useState, useRef } from 'react';
 import { Category, UserRole } from '../types';
 import { auth, db } from '../services/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { ref, set } from 'firebase/database';
 import { ShoppingBag, Store, Bike, MapPin, ArrowRight, Loader2, Phone, Lock, User, Mail, ChevronLeft, AlertCircle, Upload, Camera, X, Navigation } from 'lucide-react';
-import { BIR_EL_ATER_CENTER } from '../utils/helpers';
 
 interface AuthScreenProps {
   onLogin: (role: UserRole, name?: string) => void;
@@ -59,6 +59,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
 
   const handleGetLocation = () => {
     setIsLocating(true);
+    setError('');
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -70,16 +71,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             } 
           }));
           setIsLocating(false);
-          alert("تم تحديد موقعك بنجاح!");
         },
         (error) => {
           setIsLocating(false);
-          alert("فشل تحديد الموقع، يرجى تفعيل GPS");
-        }
+          setError("يرجى تفعيل صلاحية الوصول للموقع (GPS) لتتمكن من التسجيل.");
+        },
+        { enableHighAccuracy: true }
       );
     } else {
       setIsLocating(false);
-      alert("متصفحك لا يدعم تحديد الموقع");
+      setError("متصفحك لا يدعم تقنية تحديد الموقع.");
     }
   };
 
@@ -97,15 +98,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     e.preventDefault();
     setError('');
     
-    // Updated: Location is now mandatory for ALL roles during registration
-    if (authMode === 'REGISTER' && !formData.coords) {
-      setError('يرجى تحديد موقعك على الخريطة أولاً لتتمكن من التسجيل');
-      return;
-    }
-
-    if (!formData.email || !formData.password || (authMode === 'REGISTER' && (!formData.name || !formData.phone))) {
-      setError('يرجى ملء جميع الحقول المطلوبة');
-      return;
+    if (authMode === 'REGISTER') {
+      if (!formData.coords) {
+        setError('تحديد الموقع الجغرافي إلزامي لضمان جودة التوصيل.');
+        return;
+      }
+      if (!formData.name || !formData.phone || !formData.email || !formData.password) {
+        setError('يرجى ملء كافة البيانات المطلوبة.');
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -124,12 +125,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             phone: formData.phone,
             role: selectedRole,
             createdAt: Date.now(),
-            coordinates: formData.coords || BIR_EL_ATER_CENTER
+            coordinates: formData.coords // حفظ الإحداثيات الحقيقية المأخوذة من الـ GPS
         };
 
         if (selectedRole === UserRole.STORE) {
             profileData.category = Category.FOOD;
             profileData.image = formData.storeImage || `https://picsum.photos/400/300?random=${user.uid.slice(0,5)}`;
+            profileData.rating = 0;
+            profileData.reviewCount = 0;
+            profileData.isVerified = false;
         }
 
         await set(ref(db, `${dbPath}/${user.uid}`), profileData);
@@ -139,7 +143,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
         onLogin(selectedRole || UserRole.CUSTOMER);
       }
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === 'auth/email-already-in-use') setError('هذا البريد الإلكتروني مسجل مسبقاً.');
+      else if (err.code === 'auth/weak-password') setError('كلمة المرور ضعيفة جداً.');
+      else setError('حدث خطأ أثناء التسجيل: ' + err.message);
     } finally {
       setIsLoading(false);
     }
@@ -147,32 +153,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
 
   if (!selectedRole) {
     return (
-      <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center p-4 relative overflow-hidden font-cairo">
-        <div className="z-10 text-center mb-12">
+      <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center p-4 relative overflow-hidden font-cairo text-right" dir="rtl">
+        <div className="z-10 text-center mb-12 animate-fade-in-up">
           <div className="bg-gradient-to-br from-orange-400 to-orange-600 w-24 h-24 rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl rotate-3">
             <span className="text-white text-5xl font-black">K</span>
           </div>
           <h1 className="text-6xl font-black text-white mb-2 tracking-tighter">كيمو</h1>
-          <p className="text-slate-400 font-bold">بئر العاتر بين يديك</p>
+          <p className="text-slate-400 font-bold">كل شي يوصلك وين ما كنت</p>
         </div>
         <div className="grid grid-cols-1 gap-4 w-full max-w-sm z-10">
           <RoleCard icon={<ShoppingBag/>} title="أنا زبون" desc="اطلب ووصلك لعند الباب" onClick={() => handleRoleSelect(UserRole.CUSTOMER)} />
           <RoleCard icon={<Store/>} title="أنا متجر" desc="اعرض منتجاتك وزيد دخلك" onClick={() => handleRoleSelect(UserRole.STORE)} />
-          <RoleCard icon={<Bike/>} title="أنا موصل" desc="خدم أحرار في بئر العاتر" onClick={() => handleRoleSelect(UserRole.DRIVER)} />
+          <RoleCard icon={<Bike/>} title="أنا موصل" desc="خدم أحرار في منطقتك" onClick={() => handleRoleSelect(UserRole.DRIVER)} />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-4 font-cairo">
+    <div className="min-h-screen bg-white flex items-center justify-center p-4 font-cairo text-right" dir="rtl">
       <div className="w-full max-w-md animate-scale-up">
-        <button onClick={handleBack} className="flex items-center text-slate-400 font-bold mb-6 text-sm"><ChevronLeft className="w-4 h-4" /> رجوع للخلف</button>
+        <button onClick={handleBack} className="flex items-center gap-2 text-slate-400 font-bold mb-6 text-sm hover:text-slate-600 transition-colors"><ChevronLeft className="w-4 h-4 rotate-180" /> رجوع للخلف</button>
         <h2 className="text-4xl font-black text-slate-800 mb-2">{authMode === 'LOGIN' ? 'تسجيل دخول' : 'إنشاء حساب'}</h2>
         <p className="text-slate-500 mb-8 font-bold">أهلاً بك في كيمو - قسم {selectedRole === UserRole.STORE ? 'المتاجر' : selectedRole === UserRole.DRIVER ? 'الموصلين' : 'الزبائن'}</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && <div className="bg-red-50 text-red-500 p-4 rounded-2xl text-xs font-bold border border-red-100">{error}</div>}
+          {error && <div className="bg-red-50 text-red-500 p-4 rounded-2xl text-xs font-black border border-red-100 flex items-center gap-2 animate-pulse"><AlertCircle size={16}/> {error}</div>}
 
           {authMode === 'REGISTER' && (
             <>
@@ -180,40 +186,54 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                 <div className="flex flex-col items-center mb-6">
                   <div 
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-24 h-24 rounded-[2rem] bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer overflow-hidden relative"
+                    className="w-24 h-24 rounded-[2rem] bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer overflow-hidden relative group hover:border-orange-500 transition-all"
                   >
-                    {formData.storeImage ? <img src={formData.storeImage} className="w-full h-full object-cover" /> : <Camera className="text-slate-300" />}
+                    {formData.storeImage ? <img src={formData.storeImage} className="w-full h-full object-cover" /> : <Camera className="text-slate-300 group-hover:text-orange-500 transition-colors" />}
                     {isUploading && <div className="absolute inset-0 bg-white/60 flex items-center justify-center"><Loader2 className="animate-spin text-orange-500" /></div>}
                   </div>
                   <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
-                  <p className="text-[10px] text-slate-400 mt-2 font-black">تحميل شعار المتجر</p>
+                  <p className="text-[10px] text-slate-400 mt-2 font-black uppercase tracking-widest">تحميل شعار المتجر</p>
                 </div>
               )}
 
-              {/* Updated: Button now visible for Customer, Store, and Driver */}
               <button 
                 type="button" 
                 onClick={handleGetLocation} 
-                className={`w-full p-4 rounded-2xl border-2 border-dashed transition-all flex items-center justify-center gap-2 font-black ${formData.coords ? 'border-green-500 text-green-600 bg-green-50' : 'border-orange-200 text-orange-600 bg-orange-50'}`}
+                disabled={isLocating}
+                className={`w-full p-5 rounded-2xl border-2 border-dashed transition-all flex items-center justify-center gap-3 font-black text-sm ${formData.coords ? 'border-green-500 text-green-600 bg-green-50 shadow-inner' : 'border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100'}`}
               >
                 {isLocating ? <Loader2 className="animate-spin w-5 h-5" /> : <Navigation className="w-5 h-5" />}
-                {formData.coords ? 'تم تحديد موقعك بدقة ✓' : 'تحديد موقعي عبر GPS (إلزامي)'}
+                {formData.coords ? 'تم التقاط موقعك الحالي بنجاح ✓' : 'تحديد موقعي الآن عبر GPS (إلزامي)'}
               </button>
 
-              <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-orange-500 font-bold" placeholder="الاسم الكامل" />
-              <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-orange-500 font-bold" placeholder="رقم الهاتف" />
+              <div className="relative">
+                <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-orange-500 font-bold transition-all shadow-sm" placeholder="الاسم الكامل" />
+                <User className="absolute right-4 top-4 text-slate-300 w-5 h-5" />
+              </div>
+
+              <div className="relative">
+                <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-orange-500 font-bold transition-all shadow-sm" placeholder="رقم الهاتف" />
+                <Phone className="absolute right-4 top-4 text-slate-300 w-5 h-5" />
+              </div>
             </>
           )}
 
-          <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-orange-500 font-bold" placeholder="البريد الإلكتروني" />
-          <input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-orange-500 font-bold" placeholder="كلمة المرور" />
+          <div className="relative">
+            <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-orange-500 font-bold transition-all shadow-sm" placeholder="البريد الإلكتروني" />
+            <Mail className="absolute right-4 top-4 text-slate-300 w-5 h-5" />
+          </div>
 
-          <button type="submit" disabled={isLoading || isUploading || isLocating} className="w-full bg-[#2B2F3B] text-white py-4 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition-all">
-            {isLoading ? <Loader2 className="animate-spin mx-auto" /> : (authMode === 'LOGIN' ? 'دخول' : 'بدء الاستخدام')}
+          <div className="relative">
+            <input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-4 pr-12 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-orange-500 font-bold transition-all shadow-sm" placeholder="كلمة المرور" />
+            <Lock className="absolute right-4 top-4 text-slate-300 w-5 h-5" />
+          </div>
+
+          <button type="submit" disabled={isLoading || isUploading || (authMode === 'REGISTER' && !formData.coords)} className="w-full bg-[#2B2F3B] text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-slate-900/10 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            {isLoading ? <Loader2 className="animate-spin mx-auto" /> : (authMode === 'LOGIN' ? 'دخول' : 'بدء الاستخدام في كيمو')}
           </button>
 
-          <button type="button" onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="w-full text-center text-slate-400 text-sm font-bold pt-2">
-            {authMode === 'LOGIN' ? 'جديد في كيمو؟ سجل حسابك هنا' : 'لديك حساب؟ سجل دخولك'}
+          <button type="button" onClick={() => { setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN'); setError(''); }} className="w-full text-center text-slate-400 text-sm font-bold pt-4 hover:text-orange-500 transition-colors">
+            {authMode === 'LOGIN' ? 'جديد في كيمو؟ سجل حسابك الحقيقي هنا' : 'لديك حساب؟ سجل دخولك'}
           </button>
         </form>
       </div>
@@ -222,13 +242,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
 };
 
 const RoleCard = ({ icon, title, desc, onClick }: any) => (
-  <button onClick={onClick} className="bg-slate-800/50 border border-slate-700/50 p-6 rounded-[2rem] text-right flex items-center gap-5 hover:bg-slate-800 transition-all active:scale-95">
-    <div className="w-14 h-14 bg-orange-500 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/20">
-      {React.cloneElement(icon, { size: 28 })}
+  <button onClick={onClick} className="bg-slate-800/40 border border-slate-700/50 p-6 rounded-[2.5rem] text-right flex items-center gap-5 hover:bg-slate-800/80 transition-all active:scale-95 group">
+    <div className="w-16 h-16 bg-orange-500 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/20 group-hover:rotate-6 transition-transform">
+      {React.cloneElement(icon, { size: 32 })}
     </div>
     <div>
-      <h3 className="text-xl font-black text-white leading-none mb-1">{title}</h3>
-      <p className="text-slate-400 text-[10px] font-bold">{desc}</p>
+      <h3 className="text-xl font-black text-white leading-none mb-1.5">{title}</h3>
+      <p className="text-slate-400 text-[11px] font-bold">{desc}</p>
     </div>
   </button>
 );
