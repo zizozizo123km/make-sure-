@@ -1,128 +1,74 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Category, Product, StoreProfile, OrderStatus, Order } from '../types';
 import { formatCurrency } from '../utils/helpers';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, push, set, update } from 'firebase/database';
 import { 
   Search, Plus, Minus, ShoppingCart, MapPin, Loader2, Home, User, 
-  Camera, LogOut, ClipboardList, Trash2, Star, ShieldCheck, Award,
-  Utensils, Shirt, Smartphone, Briefcase, Baby, LayoutGrid, Save, RefreshCw,
-  Phone, Bike, MessageSquare, Send, X, Bot, Sparkles, Navigation 
+  Camera, LogOut, ClipboardList, Trash2, Star, ShieldCheck, 
+  LayoutGrid, Save, RefreshCw, Phone, Sparkles, Navigation, X, Bot, Send,
+  ChevronLeft, ShoppingBag, Heart, Filter, CheckCircle2, Layout
 } from 'lucide-react';
-import { RatingModal } from '../components/RatingModal';
 import { getKimoAssistantResponse } from '../services/geminiService';
-import { MapVisualizer } from '../components/MapVisualizer';
 
 export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> = ({ onLogout, userName }) => {
-  const [activeTab, setActiveTab] = useState<'HOME' | 'ORDERS' | 'PROFILE'>('HOME');
+  // تحديث أنواع التبويبات لتشمل CATEGORIES
+  const [activeTab, setActiveTab] = useState<'HOME' | 'CATEGORIES' | 'ORDERS' | 'PROFILE'>('HOME');
   const [activeStore, setActiveStore] = useState<StoreProfile | null>(null);
-  const [activeStoreProducts, setActiveStoreProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<{product: Product; quantity: number}[]>([]);
   const [isOrdering, setIsOrdering] = useState(false);
   const [stores, setStores] = useState<StoreProfile[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
-  // AI Assistant State
   const [showAiChat, setShowAiChat] = useState(false);
   const [aiQuery, setAiQuery] = useState('');
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [isAiThinking, setIsAiThinking] = useState(false);
 
-  // Profile Editing State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileData, setProfileData] = useState({ name: '', phone: '' });
+  const [profileData, setProfileData] = useState({ name: '', phone: '', coordinates: null as any });
   const [isUpdating, setIsUpdating] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
-
-  // Rating State
-  const [ratingOrder, setRatingOrder] = useState<Order | null>(null);
 
   const user = auth.currentUser;
 
   useEffect(() => {
     if (!user) return;
+    
     onValue(ref(db, 'stores'), (snap) => {
       const data = snap.val();
       if (data) setStores(Object.keys(data).map(k => ({ id: k, ...data[k] })));
       setLoading(false);
     });
+
+    onValue(ref(db, 'products'), (snap) => {
+      const data = snap.val();
+      if (data) setAllProducts(Object.keys(data).map(k => ({ id: k, ...data[k] })));
+    });
+
     onValue(ref(db, 'orders'), (snap) => {
       const data = snap.val();
       const list: Order[] = [];
       if (data) Object.keys(data).forEach(k => { if (data[k].customerId === user.uid) list.push({ id: k, ...data[k] }); });
       setMyOrders(list.sort((a, b) => b.timestamp - a.timestamp));
     });
+
     onValue(ref(db, `customers/${user.uid}`), (snap) => {
       if (snap.exists()) {
         const data = snap.val();
-        setProfileData({ name: data.name || '', phone: data.phone || '' });
+        setProfileData({ 
+          name: data.name || '', 
+          phone: data.phone || '',
+          coordinates: data.coordinates || null
+        });
       }
     });
   }, [user]);
-
-  useEffect(() => {
-    if (activeStore) {
-      onValue(ref(db, 'products'), (snap) => {
-        const data = snap.val();
-        const list: Product[] = [];
-        if (data) Object.keys(data).forEach(k => { if (data[k].storeId === activeStore.id) list.push({ id: k, ...data[k] }); });
-        setActiveStoreProducts(list);
-      });
-    }
-  }, [activeStore]);
-
-  const handleAiAsk = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiQuery.trim()) return;
-    setIsAiThinking(true);
-    setAiResponse(null);
-    const response = await getKimoAssistantResponse(aiQuery, stores);
-    setAiResponse(response);
-    setIsAiThinking(false);
-  };
-
-  const handleUpdateProfile = async () => {
-    if (!user || !profileData.name || !profileData.phone) return;
-    setIsUpdating(true);
-    try {
-      await update(ref(db, `customers/${user.uid}`), { name: profileData.name, phone: profileData.phone });
-      setIsEditingProfile(false);
-      alert("تم تحديث بيانات ملفك الشخصي بنجاح ✓");
-    } catch (e) {
-      alert("فشل تحديث البيانات، يرجى المحاولة لاحقاً.");
-    } finally { setIsUpdating(false); }
-  };
-
-  const handleUpdateLocation = () => {
-    setIsLocating(true);
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          if (user) {
-            await update(ref(db, `customers/${user.uid}`), {
-              coordinates: { 
-                lat: position.coords.latitude, 
-                lng: position.coords.longitude 
-              }
-            });
-            alert("تم تحديث موقعك الجغرافي بنجاح ✓");
-          }
-          setIsLocating(false);
-        },
-        (error) => {
-          alert("يرجى تفعيل الـ GPS لتحديث الموقع بدقة.");
-          setIsLocating(false);
-        }
-      );
-    } else {
-      alert("المتصفح لا يدعم تحديد الموقع.");
-      setIsLocating(false);
-    }
-  };
 
   const addToCart = (p: Product) => {
     setCart(prev => {
@@ -138,317 +84,342 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
 
   const grandTotal = cart.reduce((s, i) => s + (i.product.price * i.quantity), 0) + 200;
 
+  // تحسين وظيفة الطلب لضمان العمل
   const handleCheckout = async () => {
-    if (!activeStore) return;
+    if (cart.length === 0) return;
     setIsOrdering(true);
-    const orderData = {
-      customerId: user!.uid, customerName: profileData.name || userName,
-      storeId: activeStore.id, storeName: activeStore.name,
-      products: cart, totalPrice: grandTotal, deliveryFee: 200,
-      status: OrderStatus.PENDING, timestamp: Date.now(),
-      address: "بئر العاتر، حي السلام",
-      customerPhone: profileData.phone || '',
-      storePhone: activeStore.phone || '',
-      storeCoordinates: activeStore.coordinates,
-      coordinates: profileData.coordinates || { lat: 34.7495, lng: 8.0617 } // Default for now
-    };
+    
     try {
-      await set(push(ref(db, 'orders')), orderData);
-      setCart([]); setActiveStore(null); setActiveTab('ORDERS');
-    } finally { setIsOrdering(false); }
+      const firstProductStoreId = cart[0].product.storeId;
+      const store = stores.find(s => s.id === firstProductStoreId);
+
+      const orderData = {
+        customerId: user!.uid, 
+        customerName: profileData.name || userName,
+        storeId: firstProductStoreId, 
+        storeName: store?.name || "متجر كيمو",
+        products: cart, 
+        totalPrice: grandTotal, 
+        deliveryFee: 200,
+        status: OrderStatus.PENDING, 
+        timestamp: Date.now(),
+        address: "بئر العاتر",
+        customerPhone: profileData.phone || '',
+        coordinates: profileData.coordinates || { lat: 34.7495, lng: 8.0617 }
+      };
+
+      const newOrderRef = push(ref(db, 'orders'));
+      await set(newOrderRef, orderData);
+      
+      alert("تم إرسال طلبك بنجاح! سيتم التواصل معك قريباً.");
+      setCart([]); 
+      setActiveTab('ORDERS');
+    } catch (error) {
+      console.error("Checkout Error:", error);
+      alert("حدث خطأ أثناء إتمام الطلب، يرجى المحاولة مرة أخرى.");
+    } finally {
+      setIsOrdering(false);
+    }
   };
 
-  const filteredStores = stores.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = !selectedCategory || s.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const handleUpdateProfile = async () => {
+    if (!user) return;
+    setIsUpdating(true);
+    await update(ref(db, `customers/${user.uid}`), { name: profileData.name, phone: profileData.phone });
+    setIsEditingProfile(false);
+    setIsUpdating(false);
+  };
+
+  const handleUpdateLocation = () => {
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition((pos) => {
+      if (user) {
+        update(ref(db, `customers/${user.uid}`), {
+          coordinates: { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        });
+        setProfileData(prev => ({...prev, coordinates: { lat: pos.coords.latitude, lng: pos.coords.longitude }}));
+        alert("تم تحديد موقعك بنجاح ✓");
+      }
+      setIsLocating(false);
+    }, () => {
+      alert("يرجى تفعيل الـ GPS في متصفحك أولاً.");
+      setIsLocating(false);
+    });
+  };
+
+  if (loading) return <div className="h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-orange-500 w-12 h-12" /></div>;
 
   return (
-    <div className="bg-[#F8FAFC] min-h-screen pb-32 font-cairo text-right" dir="rtl">
-      {/* AI Chat Drawer */}
-      {showAiChat && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[1000] flex items-end justify-center animate-fade-in">
-           <div className="bg-white w-full max-w-md rounded-t-[3rem] p-8 shadow-2xl animate-slide-up max-h-[80vh] flex flex-col">
-              <div className="flex justify-between items-center mb-6">
-                 <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-lg"><Bot className="w-6 h-6" /></div>
-                    <div>
-                       <h3 className="font-black text-slate-800 text-lg">مساعد كيمو الذكي</h3>
-                       <p className="text-[10px] text-orange-500 font-bold">مدعوم بـ Gemini AI</p>
-                    </div>
-                 </div>
-                 <button onClick={() => setShowAiChat(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X /></button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto space-y-4 mb-6 pr-2">
-                 <div className="bg-slate-50 p-4 rounded-2xl rounded-tl-none text-right">
-                    <p className="text-sm font-bold text-slate-600">أهلاً بك! أنا مساعدك الذكي. اسألني عن أي متجر أو توصية وسأجيبك فوراً.</p>
-                 </div>
-                 {aiResponse && (
-                    <div className="bg-orange-500 text-white p-4 rounded-2xl rounded-tr-none text-right animate-scale-up shadow-lg">
-                       <p className="text-sm font-black leading-relaxed">{aiResponse}</p>
-                    </div>
-                 )}
-                 {isAiThinking && (
-                    <div className="flex items-center gap-2 text-slate-400 font-bold text-xs">
-                       <Loader2 className="animate-spin w-4 h-4" /> مساعد كيمو يفكر...
-                    </div>
-                 )}
-              </div>
-
-              <form onSubmit={handleAiAsk} className="relative">
-                 <input 
-                   type="text" 
-                   value={aiQuery}
-                   onChange={(e) => setAiQuery(e.target.value)}
-                   placeholder="مثلاً: وين نلقى أحسن مطعم؟" 
-                   className="w-full bg-slate-100 border-none rounded-2xl p-4 pr-14 pl-6 text-sm font-bold outline-none focus:ring-2 focus:ring-orange-500 transition-all text-right"
-                 />
-                 <button type="submit" className="absolute left-2 top-2 w-10 h-10 bg-orange-500 text-white rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-all">
-                    <Send className="w-4 h-4 rotate-180" />
-                 </button>
-              </form>
-           </div>
+    <div className="bg-[#F4F4F4] min-h-screen pb-32 font-cairo text-right" dir="rtl">
+      
+      {/* 1. Promo Header (Temu Style) */}
+      {activeTab === 'HOME' && !searchQuery && !selectedCategory && (
+        <div className="bg-gradient-to-b from-[#E62E04] to-[#FF6000] pt-12 pb-8 px-6 text-center text-white relative overflow-hidden">
+           <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+           <h1 className="text-4xl font-black mb-1 tracking-tighter uppercase italic">KIMO HOME</h1>
+           <p className="text-sm font-bold opacity-90">Refresh your home • بئر العاتر</p>
+           <p className="text-[8px] mt-4 opacity-60">*السعر الفعلي قد يختلف حسب التوقيت والمنطقة.</p>
         </div>
       )}
 
-      {/* Floating AI Action Button */}
-      <button 
-        onClick={() => setShowAiChat(true)}
-        className="fixed bottom-32 left-8 w-16 h-16 brand-gradient rounded-full flex items-center justify-center shadow-2xl z-[500] animate-bounce hover:scale-110 transition-transform active:scale-95 border-4 border-white"
-      >
-        <Sparkles className="text-white w-8 h-8" />
-      </button>
-
-      {/* Header */}
-      <header className="sticky top-0 z-[100] bg-white/80 backdrop-blur-2xl border-b border-slate-100 p-6 flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-4 flex-1 min-w-0">
-          <div className="w-12 h-12 brand-gradient rounded-2xl flex items-center justify-center shadow-lg shrink-0">
-            <span className="text-white font-black text-2xl">K</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-black text-slate-900 truncate">أهلاً، {profileData.name || userName}</h2>
-            <div className="flex items-center gap-1 mt-1">
-               <MapPin className="w-3 h-3 text-brand-500 shrink-0" />
-               <span className="text-[10px] font-bold text-slate-400 truncate">الموقع مفعل • دقة عالية</span>
+      {/* 2. Main Sticky Header */}
+      <div className="bg-white sticky top-0 z-[100] px-4 pt-4 pb-2 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="relative flex-1">
+            <input 
+              type="text" 
+              placeholder="ابحث في كيمو..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-[#F0F0F0] border-none rounded-full py-2.5 pr-10 pl-14 text-sm font-bold outline-none focus:ring-2 focus:ring-orange-500/20"
+            />
+            <Search className="absolute right-3.5 top-3 w-4.5 h-4.5 text-slate-400" />
+            <div className="absolute left-1.5 top-1.5 flex items-center gap-1.5">
+               <Camera className="w-5 h-5 text-slate-400 p-1" />
+               <button className="bg-black text-white p-1.5 rounded-full shadow-lg"><Search className="w-3.5 h-3.5" /></button>
             </div>
           </div>
+          <div className="relative cursor-pointer" onClick={() => setActiveTab('HOME')}>
+            <ShoppingCart className="w-7 h-7 text-slate-700" />
+            {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-[#FF6000] text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-white">{cart.length}</span>}
+          </div>
         </div>
-        {activeStore && (
-          <button onClick={() => setActiveStore(null)} className="bg-slate-50 text-slate-400 p-3 rounded-2xl"><LogOut className="w-5 h-5" /></button>
-        )}
-      </header>
 
-      <main className="p-6 max-w-lg mx-auto">
-        {activeTab === 'HOME' ? (
-          <>
-            {!activeStore ? (
-              <div className="space-y-8 animate-fade-in-up">
-                <div className="relative group">
-                  <input 
-                    type="text" 
-                    placeholder="ابحث عن متجر أو منتج..." 
-                    value={searchQuery} 
-                    onChange={(e) => setSearchQuery(e.target.value)} 
-                    className="w-full bg-white border border-slate-200 rounded-[2rem] py-5 pr-14 shadow-sm font-bold outline-none focus:ring-4 focus:ring-brand-500/10 transition-all text-right" 
-                  />
-                  <Search className="absolute right-5 top-5 w-6 h-6 text-slate-300" />
-                </div>
+        {/* Category Tabs (Temu Style) */}
+        <div className="flex gap-6 overflow-x-auto no-scrollbar pb-1 px-2">
+          {['الكل', ...Object.values(Category)].map((cat) => (
+            <button 
+              key={cat}
+              onClick={() => { setSelectedCategory(cat === 'الكل' ? null : cat); setActiveTab('HOME'); }}
+              className={`whitespace-nowrap text-sm font-bold pb-2 transition-all relative ${(!selectedCategory && cat === 'الكل') || selectedCategory === cat ? 'text-[#FF6000]' : 'text-slate-500'}`}
+            >
+              {cat}
+              {((!selectedCategory && cat === 'الكل') || selectedCategory === cat) && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FF6000] rounded-full"></div>}
+            </button>
+          ))}
+        </div>
+      </div>
 
-                <div className="grid grid-cols-1 gap-6">
-                  {filteredStores.map(s => (
-                    <div key={s.id} onClick={() => setActiveStore(s)} className="group bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-slate-50 hover:shadow-xl transition-all cursor-pointer relative">
-                       <div className="h-52 relative overflow-hidden">
-                          <img src={s.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
-                          <div className="absolute top-4 left-4 flex gap-2">
-                             <div className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-white text-[10px] font-black flex items-center gap-1 border border-white/10">
-                                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                                <span>{s.rating?.toFixed(1) || '0.0'}</span>
-                             </div>
-                             {s.isVerified && <div className="bg-blue-500 text-white px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 shadow-lg"><ShieldCheck className="w-3 h-3" /> موثق</div>}
-                          </div>
-                          <div className="absolute bottom-6 right-6 text-white text-right">
-                             <h4 className="text-2xl font-black mb-1">{s.name}</h4>
-                             <p className="text-[10px] opacity-80 font-bold uppercase tracking-widest">{s.category}</p>
-                          </div>
-                       </div>
+      <main className="p-3 max-w-lg mx-auto">
+        {activeTab === 'HOME' && (
+          <div className="animate-fade-in-up">
+            
+            {/* Circular Category/Stores Row (Temu Look) */}
+            {!selectedCategory && !searchQuery && (
+              <div className="flex gap-4 overflow-x-auto no-scrollbar py-6 mb-2">
+                {stores.slice(0, 6).map((store, i) => (
+                  <div key={i} onClick={() => { setActiveStore(store); setSelectedCategory(store.category); }} className="flex flex-col items-center min-w-[75px] gap-2 cursor-pointer">
+                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-md border border-slate-50 overflow-hidden p-0.5 hover:scale-105 transition-transform">
+                      <img src={store.image} className="w-full h-full object-cover rounded-full" />
                     </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="animate-fade-in-up">
-                <div className="bg-white p-4 rounded-[2.5rem] shadow-sm mb-6 flex gap-4 items-center">
-                   <img src={activeStore.image} className="w-20 h-20 rounded-2xl object-cover" />
-                   <div className="text-right">
-                      <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-                        {activeStore.name}
-                        {activeStore.isVerified && <ShieldCheck className="w-5 h-5 text-blue-500" />}
-                      </h2>
-                      <p className="text-xs text-slate-400 font-bold">{activeStore.category}</p>
-                   </div>
-                </div>
-
-                <div className="space-y-4">
-                  {activeStoreProducts.map(p => {
-                    const item = cart.find(i => i.product.id === p.id);
-                    return (
-                      <div key={p.id} className="bg-white p-4 rounded-[2rem] border border-slate-50 flex gap-4 items-center group">
-                        <img src={p.image} className="w-24 h-24 rounded-2xl object-cover" />
-                        <div className="flex-1 text-right">
-                          <h4 className="font-black text-slate-800">{p.name}</h4>
-                          <p className="text-[10px] text-slate-400 font-bold mb-2 leading-relaxed">{p.description}</p>
-                          <span className="text-brand-500 font-black text-lg">{formatCurrency(p.price)}</span>
-                        </div>
-                        <div className="flex flex-col items-center gap-1">
-                           <button onClick={() => addToCart(p)} className="w-10 h-10 brand-gradient text-white rounded-xl flex items-center justify-center shadow-lg"><Plus /></button>
-                           {item && <span className="font-black text-xs">{item.quantity}</span>}
-                           {item && <button onClick={() => removeFromCart(p.id)} className="w-10 h-10 bg-slate-100 text-slate-400 rounded-xl flex items-center justify-center"><Minus /></button>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                    <span className="text-[9px] font-black text-slate-600 truncate w-16 text-center">{store.name}</span>
+                  </div>
+                ))}
               </div>
             )}
-          </>
-        ) : activeTab === 'ORDERS' ? (
-          <div className="animate-fade-in-up space-y-6">
-             <h2 className="text-3xl font-black text-slate-900">طلباتي</h2>
-             {myOrders.length === 0 ? (
-                <div className="bg-white rounded-[2.5rem] p-12 text-center text-slate-300 border border-dashed border-slate-200">
-                  <ClipboardList className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                  <p className="font-black text-sm">لا توجد طلبات سابقة</p>
-                </div>
-             ) : (
-                myOrders.map(o => (
-                  <div key={o.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-50 relative overflow-hidden">
-                      <div className={`absolute top-0 right-0 w-2 h-full ${o.status === OrderStatus.DELIVERED ? 'bg-green-500' : 'bg-orange-500'}`}></div>
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <h3 className="font-black text-xl text-slate-900">{o.storeName}</h3>
-                            <p className="text-[10px] text-slate-400 font-bold">{new Date(o.timestamp).toLocaleString('ar-DZ')}</p>
+
+            {/* Product Grid (2 Columns) */}
+            <div className="grid grid-cols-2 gap-3">
+              {allProducts
+                .filter(p => !selectedCategory || p.category === selectedCategory)
+                .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                .map((p) => {
+                  const cartItem = cart.find(i => i.product.id === p.id);
+                  return (
+                    <div key={p.id} className="bg-white rounded-xl overflow-hidden shadow-sm flex flex-col relative group border border-slate-50">
+                      <div className="relative h-48 overflow-hidden bg-slate-50">
+                        <img src={p.image} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                        <button className="absolute top-2 left-2 bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-sm"><Heart className="w-4 h-4 text-slate-400" /></button>
+                      </div>
+                      
+                      <div className="p-3 flex-1 flex flex-col">
+                        <h4 className="text-[11px] font-bold text-slate-800 line-clamp-2 mb-1 h-8 leading-tight">{p.name}</h4>
+                        
+                        <div className="flex items-center gap-1 mb-1.5">
+                          <div className="flex text-yellow-400">
+                             {[1,2,3,4,5].map(s => <Star key={s} size={9} fill="currentColor" />)}
+                          </div>
+                          <span className="text-[9px] text-slate-400 font-bold">(15,230)</span>
                         </div>
-                        <span className={`px-4 py-2 rounded-2xl text-[10px] font-black ${o.status === OrderStatus.DELIVERED ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'}`}>
-                            {o.status}
-                        </span>
+                        
+                        <div className="mt-auto">
+                          <p className="text-[9px] text-slate-400 font-black mb-1.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 text-blue-500" /> 10K+ sold</p>
+                          <div className="flex justify-between items-center">
+                            <span className="text-[#E62E04] font-black text-base">{formatCurrency(p.price)}</span>
+                            <button 
+                              onClick={() => addToCart(p)}
+                              className="w-9 h-9 rounded-full border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-[#FF6000] hover:text-white hover:border-transparent transition-all shadow-sm active:scale-90"
+                            >
+                              <Plus className="w-4.5 h-4.5" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex justify-between items-center pt-4 border-t border-slate-50">
-                        <span className="text-brand-500 font-black text-xl">{formatCurrency(o.totalPrice)}</span>
-                        {o.status === OrderStatus.DELIVERED && (
-                            <button onClick={() => setRatingOrder(o)} className="flex items-center gap-2 bg-yellow-400 px-4 py-2 rounded-xl font-black text-xs"><Star className="w-4 h-4" /> تقييم</button>
-                        )}
-                      </div>
+                      
+                      {cartItem && (
+                        <div className="absolute top-2 right-2 bg-[#FF6000] text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center shadow-lg animate-scale-up border-2 border-white">
+                          {cartItem.quantity}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
+        {/* شاشة الأقسام الجديدة (CATEGORIES) */}
+        {activeTab === 'CATEGORIES' && (
+          <div className="animate-fade-in-up py-4 px-2">
+            <h2 className="text-2xl font-black text-slate-900 mb-6">تصفح بـ الفئة</h2>
+            <div className="grid grid-cols-2 gap-4">
+               {Object.values(Category).map((cat, i) => (
+                 <button 
+                   key={i} 
+                   onClick={() => { setSelectedCategory(cat); setActiveTab('HOME'); }}
+                   className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center gap-4 active:scale-95 transition-all"
+                 >
+                    <div className="w-16 h-16 brand-gradient rounded-full flex items-center justify-center text-white shadow-lg">
+                       <ShoppingBag />
+                    </div>
+                    <span className="font-black text-slate-700">{cat}</span>
+                 </button>
+               ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'ORDERS' && (
+           <div className="space-y-4 animate-fade-in-up">
+              <h2 className="text-2xl font-black text-slate-900 mb-4 px-2">سجل طلباتي</h2>
+              {myOrders.length === 0 ? (
+                 <div className="bg-white rounded-[2.5rem] p-16 text-center text-slate-300 border border-dashed border-slate-200">
+                   <ClipboardList className="w-16 h-16 mx-auto mb-4 opacity-10" />
+                   <p className="font-black text-sm text-slate-400">لا توجد طلبات سابقة لعرضها</p>
+                 </div>
+              ) : (
+                myOrders.map(o => (
+                  <div key={o.id} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden">
+                    <div className="flex justify-between mb-3">
+                       <span className="text-sm font-black text-slate-800">{o.storeName}</span>
+                       <span className={`text-[10px] font-black px-4 py-1.5 rounded-full ${o.status === OrderStatus.DELIVERED ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
+                          {o.status}
+                       </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-bold mb-4">{new Date(o.timestamp).toLocaleString('ar-DZ')}</p>
+                    <div className="flex justify-between items-center pt-4 border-t border-slate-50">
+                       <span className="text-[#FF6000] font-black text-xl">{formatCurrency(o.totalPrice)}</span>
+                       <button className="text-xs font-black text-slate-600 bg-slate-50 px-5 py-2 rounded-xl border border-slate-100">عرض الفاتورة</button>
+                    </div>
                   </div>
                 ))
-             )}
-          </div>
-        ) : (
-          <div className="animate-fade-in-up text-center">
-             <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100 text-center relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-full h-2 brand-gradient"></div>
-                
-                <div className="w-32 h-32 rounded-[2.5rem] border-4 border-slate-50 overflow-hidden shadow-xl mx-auto mb-8 bg-slate-50 p-1">
-                   <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userName}`} className="w-full h-full object-cover rounded-[2rem] bg-slate-100" />
-                </div>
-                
-                {!isEditingProfile ? (
-                  <>
-                    <h3 className="text-2xl font-black mb-1 text-slate-800">{profileData.name || userName}</h3>
-                    <p className="text-orange-500 font-black text-xs mb-2 uppercase tracking-widest">زبون كيمو المميز</p>
-                    <p className="text-slate-400 font-bold mb-10 flex items-center justify-center gap-2"><Phone className="w-4 h-4" /> {profileData.phone || 'لا يوجد رقم'}</p>
-                    
-                    <div className="space-y-4">
-                       <button onClick={() => setIsEditingProfile(true)} className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all hover:bg-slate-200">
-                         تعديل البيانات
-                       </button>
-                       <button onClick={onLogout} className="w-full bg-red-50 text-red-500 py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all">
-                         <LogOut className="w-5 h-5" /> تسجيل الخروج
-                       </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="space-y-5 text-right">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 pr-3 uppercase">الاسم الكامل</label>
-                       <input 
-                         type="text" 
-                         value={profileData.name} 
-                         onChange={e => setProfileData({...profileData, name: e.target.value})}
-                         className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500 transition-all text-right"
-                       />
-                    </div>
-                    
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 pr-3 uppercase">رقم الهاتف</label>
-                       <input 
-                         type="tel" 
-                         value={profileData.phone} 
-                         onChange={e => setProfileData({...profileData, phone: e.target.value})}
-                         className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-orange-500 transition-all text-right"
-                       />
-                    </div>
+              )}
+           </div>
+        )}
 
-                    <button 
-                      onClick={handleUpdateLocation}
-                      disabled={isLocating}
-                      className="w-full py-4 border-2 border-dashed border-orange-200 text-orange-600 rounded-2xl font-black text-xs flex items-center justify-center gap-2 bg-orange-50/50 hover:bg-orange-50 transition-all"
-                    >
-                      {isLocating ? <Loader2 className="animate-spin w-4 h-4" /> : <Navigation className="w-4 h-4" />}
-                      تحديث موقعي الحالي (GPS)
-                    </button>
-
-                    <div className="flex gap-4 pt-6">
-                       <button 
-                         onClick={handleUpdateProfile}
-                         disabled={isUpdating}
-                         className="flex-1 brand-gradient text-white py-4 rounded-2xl font-black shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
-                       >
-                         {isUpdating ? <Loader2 className="animate-spin" /> : <Save className="w-5 h-5" />}
-                         حفظ التغييرات
-                       </button>
-                       <button 
-                         onClick={() => setIsEditingProfile(false)}
-                         className="px-8 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all"
-                       >
-                         إلغاء
-                       </button>
+        {activeTab === 'PROFILE' && (
+           <div className="animate-fade-in-up">
+              <div className="bg-white p-10 rounded-[3rem] shadow-sm text-center border border-slate-50">
+                 <div className="w-28 h-28 bg-slate-50 rounded-full mx-auto mb-6 border-4 border-white shadow-xl overflow-hidden relative group">
+                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userName}`} className="w-full h-full" />
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                       <Camera className="text-white w-6 h-6" />
                     </div>
-                  </div>
-                )}
-             </div>
-          </div>
+                 </div>
+                 
+                 {!isEditingProfile ? (
+                   <>
+                     <h3 className="text-2xl font-black text-slate-800 mb-1">{profileData.name || userName}</h3>
+                     <p className="text-xs text-slate-400 font-bold mb-8">{profileData.phone || 'لم يتم إضافة هاتف'}</p>
+                     
+                     <div className="grid grid-cols-2 gap-4 mb-8">
+                        <div className="bg-slate-50 p-4 rounded-2xl">
+                           <p className="text-[10px] text-slate-400 font-black mb-1 uppercase">الطلبات</p>
+                           <p className="text-lg font-black text-slate-800">{myOrders.length}</p>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-2xl">
+                           <p className="text-[10px] text-slate-400 font-black mb-1 uppercase">النقاط</p>
+                           <p className="text-lg font-black text-orange-500">240</p>
+                        </div>
+                     </div>
+
+                     <div className="space-y-3">
+                        <button onClick={() => setIsEditingProfile(true)} className="w-full bg-[#F0F0F0] py-4 rounded-2xl font-black text-slate-700 text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"><User size={18} /> تعديل الحساب</button>
+                        <button onClick={onLogout} className="w-full bg-red-50 py-4 rounded-2xl font-black text-red-500 text-sm flex items-center justify-center gap-2 mt-6"><LogOut size={18} /> خروج من كيمو</button>
+                     </div>
+                   </>
+                 ) : (
+                    <div className="space-y-4 text-right">
+                       <h4 className="text-lg font-black text-slate-800 mb-4">تعديل البيانات</h4>
+                       <div className="space-y-1">
+                          <label className="text-[10px] font-black text-slate-400 pr-2">الاسم الكامل</label>
+                          <input type="text" value={profileData.name} onChange={e => setProfileData({...profileData, name: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all" />
+                       </div>
+                       <div className="space-y-1">
+                          <label className="text-[10px] font-black text-slate-400 pr-2">رقم الهاتف</label>
+                          <input type="tel" value={profileData.phone} onChange={e => setProfileData({...profileData, phone: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all" />
+                       </div>
+                       
+                       <button onClick={handleUpdateLocation} disabled={isLocating} className="w-full py-4 border-2 border-dashed border-orange-200 text-orange-600 rounded-2xl font-black text-xs flex items-center justify-center gap-2 mt-4">
+                          {isLocating ? <Loader2 className="animate-spin" /> : <Navigation size={16} />}
+                          تحديث موقع التوصيل الحالي
+                       </button>
+
+                       <div className="flex gap-3 mt-8">
+                          <button onClick={handleUpdateProfile} disabled={isUpdating} className="flex-1 bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all">حفظ البيانات</button>
+                          <button onClick={() => setIsEditingProfile(false)} className="px-6 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black text-sm">إلغاء</button>
+                       </div>
+                    </div>
+                 )}
+              </div>
+           </div>
         )}
       </main>
 
-      <nav className="fixed bottom-8 left-8 right-8 bg-slate-900/95 backdrop-blur-xl rounded-[2.5rem] p-3 flex justify-around items-center floating-nav z-[200]">
-        <NavBtn act={activeTab === 'PROFILE'} onClick={() => setActiveTab('PROFILE')} icon={<User />} />
-        <NavBtn act={activeTab === 'ORDERS'} onClick={() => setActiveTab('ORDERS')} icon={<ClipboardList />} />
-        <NavBtn act={activeTab === 'HOME'} onClick={() => setActiveTab('HOME')} icon={<Home />} />
-      </nav>
-
-      {cart.length > 0 && activeTab === 'HOME' && activeStore && (
-        <div className="fixed bottom-32 left-8 right-8 bg-white rounded-[2.5rem] shadow-2xl p-6 z-[150] animate-slide-up border border-slate-100">
-           <div className="flex justify-between items-center mb-4">
-              <h3 className="font-black text-xl text-slate-900">سلتك</h3>
-              <button onClick={() => setCart([])} className="text-slate-300"><Trash2 className="w-5 h-5" /></button>
+      {/* Floating Checkout Button (Fixed and Improved) */}
+      {cart.length > 0 && activeTab === 'HOME' && (
+        <div className="fixed bottom-24 left-4 right-4 bg-white/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl p-3 z-[200] border border-white animate-slide-up flex items-center justify-between pl-6">
+           <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-[#FF6000] relative">
+                 <ShoppingBag className="w-7 h-7" />
+                 <span className="absolute -top-1 -right-1 bg-black text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">{cart.length}</span>
+              </div>
+              <div>
+                 <p className="text-[10px] font-black text-slate-400 uppercase">إجمالي السلة</p>
+                 <p className="text-xl font-black text-[#FF6000] leading-none">{formatCurrency(grandTotal)}</p>
+              </div>
            </div>
-           <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
-              <p className="text-2xl font-black text-brand-500">{formatCurrency(grandTotal)}</p>
-              <button onClick={handleCheckout} disabled={isOrdering} className="brand-gradient text-white px-8 py-3 rounded-xl font-black shadow-lg">
-                {isOrdering ? <Loader2 className="animate-spin" /> : 'اطلب الآن'}
-              </button>
-           </div>
+           <button 
+             onClick={handleCheckout} 
+             disabled={isOrdering}
+             className="bg-[#FF6000] text-white px-10 py-4 rounded-2xl font-black text-sm shadow-xl shadow-orange-500/20 active:scale-95 transition-all flex items-center gap-2"
+           >
+             {isOrdering ? <Loader2 className="animate-spin" /> : <>إتمام الطلب <ChevronLeft size={18} /></>}
+           </button>
         </div>
       )}
+
+      {/* Bottom Navigation Bar (Fixed Tab Navigation) */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 h-20 flex justify-around items-center px-4 z-[500] shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
+        <NavBtn act={activeTab === 'HOME'} onClick={() => { setActiveTab('HOME'); setSelectedCategory(null); }} icon={<Home />} label="الرئيسية" />
+        <NavBtn act={activeTab === 'CATEGORIES'} onClick={() => setActiveTab('CATEGORIES')} icon={<LayoutGrid />} label="الأقسام" />
+        <NavBtn act={activeTab === 'ORDERS'} onClick={() => setActiveTab('ORDERS')} icon={<ClipboardList />} label="طلباتي" />
+        <NavBtn act={activeTab === 'PROFILE'} onClick={() => setActiveTab('PROFILE')} icon={<User />} label="حسابي" />
+      </nav>
+
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </div>
   );
 };
 
-const NavBtn = ({ act, onClick, icon }: any) => (
-  <button onClick={onClick} className={`p-5 rounded-full transition-all ${act ? 'bg-brand-500 text-white scale-110 shadow-lg' : 'text-slate-500'}`}>
-    {React.cloneElement(icon, { size: 28 })}
+const NavBtn = ({ act, onClick, icon, label }: any) => (
+  <button onClick={onClick} className={`flex flex-col items-center gap-1.5 transition-all ${act ? 'text-[#FF6000]' : 'text-slate-400'}`}>
+    <div className={`p-1 ${act ? 'scale-110' : 'scale-100'} transition-transform`}>
+      {React.cloneElement(icon, { size: 22, strokeWidth: act ? 3 : 2 })}
+    </div>
+    <span className="text-[9px] font-black tracking-tighter">{label}</span>
   </button>
 );
