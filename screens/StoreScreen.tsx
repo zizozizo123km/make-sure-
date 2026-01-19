@@ -7,7 +7,7 @@ import {
   Package, Plus, Upload, Loader2, Trash2, ArrowLeft, 
   ClipboardList, CheckCircle, Camera, LogOut, User, 
   RefreshCw, Phone, Tag, Sparkles, Wand2, Save, MapPin, Navigation,
-  ChevronLeft, ShoppingBag, Star, LayoutGrid, Home
+  ChevronLeft, ShoppingBag, Star, LayoutGrid, Home, Edit3, Store
 } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import { generateProductDescription } from '../services/geminiService';
@@ -29,7 +29,10 @@ const uploadImage = async (file: File): Promise<string | null> => {
     });
     const data = await res.json();
     return data.secure_url || null;
-  } catch (error) { return null; }
+  } catch (error) { 
+    console.error("Cloudinary Error:", error);
+    return null; 
+  }
 };
 
 export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) => {
@@ -47,7 +50,6 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editProfileData, setEditProfileData] = useState({ name: '', phone: '', image: '' });
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
-  const [isLocating, setIsLocating] = useState(false);
   const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
 
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
@@ -64,11 +66,13 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
       if (snapshot.exists()) {
         const data = snapshot.val();
         setStoreProfile(data);
-        setEditProfileData({ 
-          name: data.name || '', 
-          phone: data.phone || '', 
-          image: data.image || '' 
-        });
+        if (!isEditingProfile && !isUploadingProfileImage) {
+          setEditProfileData({ 
+            name: data.name || '', 
+            phone: data.phone || '', 
+            image: data.image || '' 
+          });
+        }
       }
     });
 
@@ -86,7 +90,7 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
       setOrders(list.sort((a, b) => b.timestamp - a.timestamp));
       setLoading(false);
     });
-  }, [currentStoreId]);
+  }, [currentStoreId, isEditingProfile, isUploadingProfileImage]);
 
   const handleAiDescription = async () => {
     if (!newProduct.name) return alert("أدخل اسم المنتج أولاً!");
@@ -128,10 +132,24 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
   const handleProfileImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // معاينة محلية فورية
+      const localUrl = URL.createObjectURL(file);
+      setEditProfileData(prev => ({ ...prev, image: localUrl }));
+      
       setIsUploadingProfileImage(true);
-      const url = await uploadImage(file);
-      if (url) setEditProfileData(prev => ({ ...prev, image: url }));
-      setIsUploadingProfileImage(false);
+      try {
+        const url = await uploadImage(file);
+        if (url) {
+          setEditProfileData(prev => ({ ...prev, image: url }));
+          if (currentStoreId) {
+            await update(ref(db, `stores/${currentStoreId}`), { image: url });
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsUploadingProfileImage(false);
+      }
     }
   };
 
@@ -140,7 +158,7 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
   return (
     <div className="bg-[#F4F4F4] min-h-screen pb-32 font-cairo text-right" dir="rtl">
       
-      {/* Header Consistent with Customer */}
+      {/* Header */}
       <header className="bg-white sticky top-0 z-[100] px-6 pt-8 pb-4 shadow-sm flex items-center justify-between">
         <div>
            <h1 className="text-2xl font-black text-slate-800">كيمو متاجر</h1>
@@ -191,7 +209,12 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                      {isUploading && <div className="absolute inset-0 bg-white/60 flex items-center justify-center"><Loader2 className="animate-spin text-orange-500" /></div>}
                      <input type="file" id="p-img" onChange={e => {
                         const file = e.target.files?.[0];
-                        if (file) { setIsUploading(true); uploadImage(file).then(url => { if (url) setNewProduct({...newProduct, image: url}); setIsUploading(false); }); }
+                        if (file) { 
+                          const localUrl = URL.createObjectURL(file);
+                          setNewProduct({...newProduct, image: localUrl});
+                          setIsUploading(true); 
+                          uploadImage(file).then(url => { if (url) setNewProduct({...newProduct, image: url}); setIsUploading(false); }); 
+                        }
                      }} className="hidden" accept="image/*" />
                    </div>
                    <input type="text" placeholder="ما هو اسم المنتج؟" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all" />
@@ -249,12 +272,24 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                   className="w-28 h-28 rounded-[2.2rem] border-4 border-white shadow-xl mx-auto mb-6 bg-slate-50 relative overflow-hidden group cursor-pointer"
                   onClick={() => isEditingProfile && !isUploadingProfileImage && profileImageInputRef.current?.click()}
                 >
-                   <img src={isEditingProfile ? editProfileData.image : (storeProfile?.image || `https://api.dicebear.com/7.x/identicon/svg?seed=${storeProfile?.name}`)} className="w-full h-full object-cover" />
-                   {isEditingProfile && (
-                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="text-white w-6 h-6" /></div>
+                   {editProfileData.image ? (
+                     <img src={editProfileData.image} className="w-full h-full object-cover" />
+                   ) : (
+                     <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-400">
+                        <Store size={40} />
+                     </div>
                    )}
+                   
+                   {isEditingProfile && (
+                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Camera className="text-white w-6 h-6" />
+                     </div>
+                   )}
+                   
                    {isUploadingProfileImage && (
-                     <div className="absolute inset-0 bg-white/60 flex items-center justify-center"><Loader2 className="animate-spin text-orange-500" /></div>
+                     <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+                        <Loader2 className="animate-spin text-orange-500 w-6 h-6" />
+                     </div>
                    )}
                 </div>
                 <input type="file" ref={profileImageInputRef} onChange={handleProfileImageUpload} className="hidden" accept="image/*" />
@@ -274,22 +309,26 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                         </div>
                     </div>
                     <div className="space-y-3">
-                       <button onClick={() => setIsEditingProfile(true)} className="w-full bg-[#F0F0F0] py-4 rounded-2xl font-black text-slate-700 text-sm active:scale-95 transition-all">تعديل الملف</button>
-                       <button onClick={onLogout} className="w-full bg-red-50 py-4 rounded-2xl font-black text-red-500 text-sm mt-6">خروج من كيمو</button>
+                       <button onClick={() => setIsEditingProfile(true)} className="w-full bg-[#F0F0F0] py-4 rounded-2xl font-black text-slate-700 text-sm flex items-center justify-center gap-2 active:scale-95 transition-all">
+                         <Edit3 size={18} /> تعديل الملف
+                       </button>
+                       <button onClick={onLogout} className="w-full bg-pink-50 py-4 rounded-2xl font-black text-pink-500 text-sm mt-6 active:scale-95 transition-all">خروج من كيمو</button>
                     </div>
                   </>
                 ) : (
                   <div className="space-y-5 text-right">
                     <div className="space-y-1">
                        <label className="text-[10px] font-black text-slate-400 pr-2">اسم المتجر</label>
-                       <input type="text" value={editProfileData.name} onChange={e => setEditProfileData({...editProfileData, name: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+                       <input type="text" value={editProfileData.name} onChange={e => setEditProfileData({...editProfileData, name: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all" />
                     </div>
                     <div className="space-y-1">
                        <label className="text-[10px] font-black text-slate-400 pr-2">رقم الهاتف</label>
-                       <input type="tel" value={editProfileData.phone} onChange={e => setEditProfileData({...editProfileData, phone: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+                       <input type="tel" value={editProfileData.phone} onChange={e => setEditProfileData({...editProfileData, phone: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all" />
                     </div>
                     <div className="flex gap-3 pt-4">
-                       <button onClick={handleUpdateProfile} disabled={isUpdatingProfile} className="flex-1 bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all">حفظ</button>
+                       <button onClick={handleUpdateProfile} disabled={isUpdatingProfile || isUploadingProfileImage} className="flex-1 bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all flex items-center justify-center">
+                         {isUpdatingProfile ? <Loader2 className="animate-spin" /> : 'حفظ'}
+                       </button>
                        <button onClick={() => setIsEditingProfile(false)} className="px-6 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black">إلغاء</button>
                     </div>
                   </div>
@@ -299,7 +338,7 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
         )}
       </main>
 
-      {/* Bottom Nav Consistent with Customer */}
+      {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 h-20 flex justify-around items-center px-4 z-[500] shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
         <NavBtn act={activeTab === 'PRODUCTS'} onClick={() => setActiveTab('PRODUCTS')} icon={<LayoutGrid />} label="منتجاتي" />
         <NavBtn act={activeTab === 'ORDERS'} onClick={() => setActiveTab('ORDERS')} icon={<ClipboardList />} label="الطلبيات" />

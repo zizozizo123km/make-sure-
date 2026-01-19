@@ -1,17 +1,32 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapVisualizer } from '../components/MapVisualizer';
 import { RatingModal } from '../components/RatingModal';
 import { 
   MapPin, Navigation, CheckCircle, Clock, Loader2, Package, Bike, 
   ArrowRight, User, LogOut, Camera, Phone, RefreshCw, Save,
   ChevronLeft, ShoppingBag, Star, LayoutGrid, Home, X, Bot, Map as MapIcon,
-  Store as StoreIcon, PhoneCall
+  Store as StoreIcon, PhoneCall, Edit3
 } from 'lucide-react';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, update, off } from 'firebase/database';
 import { Order, OrderStatus, Coordinates } from '../types';
 import { formatCurrency } from '../utils/helpers';
+
+const uploadImage = async (file: File): Promise<string | null> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", "makemm");
+  const cloudName = 'dkqxgwjnr';
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    return data.secure_url || null;
+  } catch (error) { return null; }
+};
 
 export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = ({ onLogout, userName }) => {
   const [activeTab, setActiveTab] = useState<'AVAILABLE' | 'ACTIVE' | 'PROFILE'>('AVAILABLE');
@@ -22,9 +37,11 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
   const [loading, setLoading] = useState(true);
 
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({ name: '', phone: '' });
+  const [editData, setEditData] = useState({ name: '', phone: '', avatar: '' });
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const currentDriverId = auth.currentUser?.uid;
 
   useEffect(() => {
@@ -48,7 +65,13 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
       if (snap.exists()) {
         const data = snap.val();
         setDriverProfile(data);
-        setEditData({ name: data.name || '', phone: data.phone || '' });
+        if (!isEditing && !isUploadingAvatar) {
+          setEditData({ 
+            name: data.name || '', 
+            phone: data.phone || '',
+            avatar: data.avatar || ''
+          });
+        }
       }
     });
 
@@ -67,20 +90,42 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
         setActiveOrder(myActive);
         setLoading(false);
     });
-  }, [currentDriverId]);
+  }, [currentDriverId, isEditing, isUploadingAvatar]);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsUploadingAvatar(true);
+      const url = await uploadImage(file);
+      if (url) {
+        setEditData(prev => ({ ...prev, avatar: url }));
+        if (currentDriverId) {
+          // تحديث فوري في السيرفر لضمان ثبات الصورة
+          await update(ref(db, `drivers/${currentDriverId}`), { avatar: url });
+        }
+      }
+      setIsUploadingAvatar(false);
+    }
+  };
 
   const handleUpdateProfile = async () => {
     if (!currentDriverId || !editData.name || !editData.phone) return;
     setIsUpdating(true);
-    await update(ref(db, `drivers/${currentDriverId}`), { name: editData.name, phone: editData.phone });
-    setIsEditing(false);
-    setIsUpdating(false);
-    alert("تم حفظ بياناتك ✓");
+    try {
+      await update(ref(db, `drivers/${currentDriverId}`), { 
+        name: editData.name, 
+        phone: editData.phone,
+        avatar: editData.avatar 
+      });
+      setIsEditing(false);
+      alert("تم حفظ بياناتك بنجاح ✓");
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const handleAcceptOrder = async (orderId: string) => {
       if (!currentDriverId) return;
-      // نحتاج لجلب رقم هاتف المتجر إذا لم يكن موجوداً في الطلب
       await update(ref(db, `orders/${orderId}`), {
           status: OrderStatus.ACCEPTED_BY_DRIVER,
           driverId: currentDriverId,
@@ -226,9 +271,32 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
          {activeTab === 'PROFILE' && (
            <div className="animate-fade-in-up">
               <div className="bg-white p-10 rounded-[3rem] shadow-sm text-center border border-slate-50 relative overflow-hidden">
-                 <div className="w-28 h-28 rounded-[2.2rem] border-4 border-white shadow-xl mx-auto mb-6 bg-slate-50 relative overflow-hidden group">
-                    <img src={`https://api.dicebear.com/7.x/identicon/svg?seed=${driverProfile?.name}`} className="w-full h-full object-cover" />
+                 <div 
+                  className="w-28 h-28 rounded-[2.2rem] border-4 border-white shadow-xl mx-auto mb-6 bg-slate-50 relative overflow-hidden group cursor-pointer"
+                  onClick={() => isEditing && !isUploadingAvatar && fileInputRef.current?.click()}
+                 >
+                    {(editData.avatar || driverProfile?.avatar) ? (
+                      <img src={editData.avatar || driverProfile.avatar} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-400">
+                        <User size={40} />
+                      </div>
+                    )}
+                    
+                    {isEditing && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Camera className="text-white w-6 h-6" />
+                      </div>
+                    )}
+                    
+                    {isUploadingAvatar && (
+                      <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+                        <Loader2 className="animate-spin text-orange-500 w-6 h-6" />
+                      </div>
+                    )}
                  </div>
+                 
+                 <input type="file" ref={fileInputRef} onChange={handleAvatarUpload} className="hidden" accept="image/*" />
                  
                  {!isEditing ? (
                    <>
@@ -245,22 +313,26 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
                         </div>
                      </div>
                      <div className="space-y-3">
-                        <button onClick={() => setIsEditing(true)} className="w-full bg-[#F0F0F0] py-4 rounded-2xl font-black text-slate-700 text-sm active:scale-95 transition-all">تعديل الملف</button>
-                        <button onClick={onLogout} className="w-full bg-red-50 py-4 rounded-2xl font-black text-red-500 text-sm mt-6">خروج من كيمو</button>
+                        <button onClick={() => setIsEditing(true)} className="w-full bg-[#F0F0F0] py-4 rounded-2xl font-black text-slate-700 text-sm flex items-center justify-center gap-2 active:scale-95 transition-all">
+                          <Edit3 size={18} /> تعديل الملف
+                        </button>
+                        <button onClick={onLogout} className="w-full bg-pink-50 py-4 rounded-2xl font-black text-pink-500 text-sm mt-6 active:scale-95 transition-all">خروج من كيمو</button>
                      </div>
                    </>
                  ) : (
                     <div className="space-y-5 text-right">
                        <div className="space-y-1">
                           <label className="text-[10px] font-black text-slate-400 pr-2">الاسم بالكامل</label>
-                          <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+                          <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all" />
                        </div>
                        <div className="space-y-1">
                           <label className="text-[10px] font-black text-slate-400 pr-2">رقم الهاتف</label>
-                          <input type="tel" value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+                          <input type="tel" value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all" />
                        </div>
                        <div className="flex gap-3 pt-4">
-                          <button onClick={handleUpdateProfile} disabled={isUpdating} className="flex-1 bg-black text-white py-4 rounded-2xl font-black text-sm active:scale-95 transition-all">حفظ</button>
+                          <button onClick={handleUpdateProfile} disabled={isUpdating || isUploadingAvatar} className="flex-1 bg-black text-white py-4 rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center">
+                            {isUpdating ? <Loader2 className="animate-spin" /> : 'حفظ'}
+                          </button>
                           <button onClick={() => setIsEditing(false)} className="px-6 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black">إلغاء</button>
                        </div>
                     </div>

@@ -1,10 +1,32 @@
+
 import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getMessaging } from "firebase/messaging";
 
-// Your web app's Firebase configuration
+// ⚠️ ملاحظة هامة جداً لحل مشكلة PERMISSION_DENIED ⚠️
+// يجب نسخ القواعد التالية ولصقها في واجهة Firebase (Realtime Database -> Rules):
+/*
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "reviews": {
+      ".read": "true",
+      "$targetId": {
+        ".write": "auth != null"
+      }
+    },
+    "orders": {
+      "$orderId": {
+        ".write": "auth != null && (data.child('customerId').val() == auth.uid || !data.exists())"
+      }
+    }
+  }
+}
+*/
+
 const firebaseConfig = {
   apiKey: "AIzaSyAmPFwV1ld4H6CWukHtEoKPg9E2tHWkyxE",
   authDomain: "not-b25f1.firebaseapp.com",
@@ -16,7 +38,6 @@ const firebaseConfig = {
   measurementId: "G-9PLRDRTYND"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 export const db = getDatabase(app);
