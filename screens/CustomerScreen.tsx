@@ -1,19 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { Category, Product, StoreProfile, OrderStatus, Order } from '../types';
+import { Category, Product, StoreProfile, OrderStatus, Order, Coordinates } from '../types';
 import { formatCurrency } from '../utils/helpers';
 import { db, auth } from '../services/firebase';
-import { ref, onValue, push, set, update } from 'firebase/database';
+import { ref, onValue, push, set, update, off } from 'firebase/database';
 import { 
   Search, Plus, Minus, ShoppingCart, MapPin, Loader2, Home, User, 
   Camera, LogOut, ClipboardList, Trash2, Star, ShieldCheck, 
   LayoutGrid, Save, RefreshCw, Phone, Sparkles, Navigation, X, Bot, Send,
-  ChevronLeft, ShoppingBag, Heart, Filter, CheckCircle2, Layout
+  ChevronLeft, ShoppingBag, Heart, Filter, CheckCircle2, Layout, Bike, PhoneCall,
+  Clock, Map as MapIcon, Timer, Truck
 } from 'lucide-react';
-import { getKimoAssistantResponse } from '../services/geminiService';
+import { MapVisualizer } from '../components/MapVisualizer';
 
 export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> = ({ onLogout, userName }) => {
-  // تحديث أنواع التبويبات لتشمل CATEGORIES
   const [activeTab, setActiveTab] = useState<'HOME' | 'CATEGORIES' | 'ORDERS' | 'PROFILE'>('HOME');
   const [activeStore, setActiveStore] = useState<StoreProfile | null>(null);
   const [cart, setCart] = useState<{product: Product; quantity: number}[]>([]);
@@ -25,10 +25,9 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
-  const [showAiChat, setShowAiChat] = useState(false);
-  const [aiQuery, setAiQuery] = useState('');
-  const [aiResponse, setAiResponse] = useState<string | null>(null);
-  const [isAiThinking, setIsAiThinking] = useState(false);
+  // تتبع الطلب
+  const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
+  const [driverLiveCoords, setDriverLiveCoords] = useState<Coordinates | null>(null);
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileData, setProfileData] = useState({ name: '', phone: '', coordinates: null as any });
@@ -48,7 +47,13 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
 
     onValue(ref(db, 'products'), (snap) => {
       const data = snap.val();
-      if (data) setAllProducts(Object.keys(data).map(k => ({ id: k, ...data[k] })));
+      if (data) {
+        // فلترة المنتجات التي لا تحتوي على storeId صالح لتجنب الأخطاء
+        const list = Object.keys(data)
+          .map(k => ({ id: k, ...data[k] }))
+          .filter(p => p.storeId && p.name && p.price !== undefined);
+        setAllProducts(list);
+      }
     });
 
     onValue(ref(db, 'orders'), (snap) => {
@@ -56,6 +61,11 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
       const list: Order[] = [];
       if (data) Object.keys(data).forEach(k => { if (data[k].customerId === user.uid) list.push({ id: k, ...data[k] }); });
       setMyOrders(list.sort((a, b) => b.timestamp - a.timestamp));
+      
+      if (trackingOrder) {
+        const updated = list.find(o => o.id === trackingOrder.id);
+        if (updated) setTrackingOrder(updated);
+      }
     });
 
     onValue(ref(db, `customers/${user.uid}`), (snap) => {
@@ -70,7 +80,25 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
     });
   }, [user]);
 
+  useEffect(() => {
+    if (trackingOrder?.driverId) {
+      const driverPosRef = ref(db, `drivers/${trackingOrder.driverId}/coordinates`);
+      onValue(driverPosRef, (snap) => {
+        if (snap.exists()) {
+          setDriverLiveCoords(snap.val());
+        }
+      });
+      return () => off(driverPosRef);
+    } else {
+      setDriverLiveCoords(null);
+    }
+  }, [trackingOrder]);
+
   const addToCart = (p: Product) => {
+    if (!p.storeId) {
+      alert("عذراً، هذا المنتج غير متاح حالياً لنقص بيانات المتجر.");
+      return;
+    }
     setCart(prev => {
       const ex = prev.find(i => i.product.id === p.id);
       if (ex) return prev.map(i => i.product.id === p.id ? {...i, quantity: i.quantity + 1} : i);
@@ -84,28 +112,35 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
 
   const grandTotal = cart.reduce((s, i) => s + (i.product.price * i.quantity), 0) + 200;
 
-  // تحسين وظيفة الطلب لضمان العمل
   const handleCheckout = async () => {
     if (cart.length === 0) return;
+    
+    const firstProductStoreId = cart[0].product.storeId;
+    if (!firstProductStoreId) {
+      alert("خطأ: تعذر تحديد متجر الطلبية. يرجى إزالة المنتجات من السلة وإعادة المحاولة.");
+      return;
+    }
+
     setIsOrdering(true);
     
     try {
-      const firstProductStoreId = cart[0].product.storeId;
       const store = stores.find(s => s.id === firstProductStoreId);
 
+      // بناء كائن الطلب مع التأكد من عدم وجود أي قيمة undefined
       const orderData = {
         customerId: user!.uid, 
-        customerName: profileData.name || userName,
+        customerName: profileData.name || userName || "زبون كيمو",
         storeId: firstProductStoreId, 
         storeName: store?.name || "متجر كيمو",
-        products: cart, 
+        products: JSON.parse(JSON.stringify(cart)), // تنظيف الكائن من أي وظائف أو قيم غير معرفة
         totalPrice: grandTotal, 
         deliveryFee: 200,
         status: OrderStatus.PENDING, 
         timestamp: Date.now(),
         address: "بئر العاتر",
         customerPhone: profileData.phone || '',
-        coordinates: profileData.coordinates || { lat: 34.7495, lng: 8.0617 }
+        coordinates: profileData.coordinates || { lat: 34.7495, lng: 8.0617 },
+        storeCoordinates: store?.coordinates || { lat: 34.7495, lng: 8.0617 }
       };
 
       const newOrderRef = push(ref(db, 'orders'));
@@ -114,9 +149,9 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
       alert("تم إرسال طلبك بنجاح! سيتم التواصل معك قريباً.");
       setCart([]); 
       setActiveTab('ORDERS');
-    } catch (error) {
-      console.error("Checkout Error:", error);
-      alert("حدث خطأ أثناء إتمام الطلب، يرجى المحاولة مرة أخرى.");
+    } catch (error: any) {
+      console.error("Checkout Error Detail:", error);
+      alert("حدث خطأ تقني أثناء الطلب. يرجى التحقق من اتصالك بالإنترنت.");
     } finally {
       setIsOrdering(false);
     }
@@ -152,7 +187,68 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
   return (
     <div className="bg-[#F4F4F4] min-h-screen pb-32 font-cairo text-right" dir="rtl">
       
-      {/* 1. Promo Header (Temu Style) */}
+      {/* 0. Tracking Overlay */}
+      {trackingOrder && (
+        <div className="fixed inset-0 z-[1000] bg-white animate-fade-in flex flex-col">
+          <div className="p-4 flex items-center justify-between border-b border-slate-100 bg-white shadow-sm">
+            <button onClick={() => setTrackingOrder(null)} className="p-2 bg-slate-100 rounded-full active:scale-90"><X size={20}/></button>
+            <div className="text-center">
+               <h3 className="font-black text-slate-800 text-sm">تتبع طلبي المباشر</h3>
+               <p className="text-[9px] font-bold text-slate-400">رقم الطلب: #{trackingOrder.id?.slice(-5).toUpperCase()}</p>
+            </div>
+            <div className="w-10"></div>
+          </div>
+          
+          <div className="flex-1 relative">
+            <MapVisualizer 
+              height="h-full" 
+              zoom={15}
+              customerLocation={trackingOrder.coordinates}
+              storeLocation={trackingOrder.storeCoordinates}
+              driverLocation={driverLiveCoords || undefined}
+            />
+          </div>
+
+          <div className="bg-white p-6 rounded-t-[3rem] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] -mt-10 z-[1001] relative border-t border-slate-50">
+            <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-6"></div>
+            
+            {/* Status Stepper */}
+            <div className="flex items-center justify-between mb-8 px-2">
+               <StatusStep label="انتظار" active={true} done={trackingOrder.status !== OrderStatus.PENDING} />
+               <div className={`flex-1 h-0.5 mx-2 rounded-full ${trackingOrder.status !== OrderStatus.PENDING ? 'bg-orange-500' : 'bg-slate-100'}`}></div>
+               <StatusStep label="تجهيز" active={trackingOrder.status === OrderStatus.ACCEPTED_BY_STORE || trackingOrder.status === OrderStatus.ACCEPTED_BY_DRIVER || trackingOrder.status === OrderStatus.DELIVERED} done={trackingOrder.status === OrderStatus.ACCEPTED_BY_DRIVER || trackingOrder.status === OrderStatus.DELIVERED} />
+               <div className={`flex-1 h-0.5 mx-2 rounded-full ${trackingOrder.status === OrderStatus.ACCEPTED_BY_DRIVER || trackingOrder.status === OrderStatus.DELIVERED ? 'bg-orange-500' : 'bg-slate-100'}`}></div>
+               <StatusStep label="طريق" active={trackingOrder.status === OrderStatus.ACCEPTED_BY_DRIVER || trackingOrder.status === OrderStatus.DELIVERED} done={trackingOrder.status === OrderStatus.DELIVERED} />
+               <div className={`flex-1 h-0.5 mx-2 rounded-full ${trackingOrder.status === OrderStatus.DELIVERED ? 'bg-orange-500' : 'bg-slate-100'}`}></div>
+               <StatusStep label="تسليم" active={trackingOrder.status === OrderStatus.DELIVERED} done={trackingOrder.status === OrderStatus.DELIVERED} />
+            </div>
+
+            <div className="flex items-center gap-4 mb-6 bg-slate-50 p-4 rounded-[2rem]">
+              <div className="w-14 h-14 brand-gradient rounded-2xl flex items-center justify-center text-white shadow-lg">
+                <Bike size={28} />
+              </div>
+              <div className="flex-1">
+                <h4 className="font-black text-slate-800 text-base">{trackingOrder.driverName || 'جاري البحث عن موصل...'}</h4>
+                <p className="text-[10px] text-slate-400 font-bold">موصل كيمو السريع</p>
+              </div>
+              {trackingOrder.driverPhone && (
+                <a href={`tel:${trackingOrder.driverPhone}`} className="w-12 h-12 bg-green-500 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-all">
+                  <Phone size={20} />
+                </a>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+               <button className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all">
+                  <Bot size={16} /> مساعدة كيمو
+               </button>
+               <button onClick={() => setTrackingOrder(null)} className="px-6 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black text-xs">إغلاق</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. Promo Header */}
       {activeTab === 'HOME' && !searchQuery && !selectedCategory && (
         <div className="bg-gradient-to-b from-[#E62E04] to-[#FF6000] pt-12 pb-8 px-6 text-center text-white relative overflow-hidden">
            <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
@@ -185,7 +281,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
           </div>
         </div>
 
-        {/* Category Tabs (Temu Style) */}
         <div className="flex gap-6 overflow-x-auto no-scrollbar pb-1 px-2">
           {['الكل', ...Object.values(Category)].map((cat) => (
             <button 
@@ -203,8 +298,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
       <main className="p-3 max-w-lg mx-auto">
         {activeTab === 'HOME' && (
           <div className="animate-fade-in-up">
-            
-            {/* Circular Category/Stores Row (Temu Look) */}
             {!selectedCategory && !searchQuery && (
               <div className="flex gap-4 overflow-x-auto no-scrollbar py-6 mb-2">
                 {stores.slice(0, 6).map((store, i) => (
@@ -218,7 +311,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
               </div>
             )}
 
-            {/* Product Grid (2 Columns) */}
             <div className="grid grid-cols-2 gap-3">
               {allProducts
                 .filter(p => !selectedCategory || p.category === selectedCategory)
@@ -234,14 +326,12 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                       
                       <div className="p-3 flex-1 flex flex-col">
                         <h4 className="text-[11px] font-bold text-slate-800 line-clamp-2 mb-1 h-8 leading-tight">{p.name}</h4>
-                        
                         <div className="flex items-center gap-1 mb-1.5">
                           <div className="flex text-yellow-400">
                              {[1,2,3,4,5].map(s => <Star key={s} size={9} fill="currentColor" />)}
                           </div>
                           <span className="text-[9px] text-slate-400 font-bold">(15,230)</span>
                         </div>
-                        
                         <div className="mt-auto">
                           <p className="text-[9px] text-slate-400 font-black mb-1.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 text-blue-500" /> 10K+ sold</p>
                           <div className="flex justify-between items-center">
@@ -255,7 +345,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                           </div>
                         </div>
                       </div>
-                      
                       {cartItem && (
                         <div className="absolute top-2 right-2 bg-[#FF6000] text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center shadow-lg animate-scale-up border-2 border-white">
                           {cartItem.quantity}
@@ -268,7 +357,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
           </div>
         )}
 
-        {/* شاشة الأقسام الجديدة (CATEGORIES) */}
         {activeTab === 'CATEGORIES' && (
           <div className="animate-fade-in-up py-4 px-2">
             <h2 className="text-2xl font-black text-slate-900 mb-6">تصفح بـ الفئة</h2>
@@ -299,18 +387,42 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                  </div>
               ) : (
                 myOrders.map(o => (
-                  <div key={o.id} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden">
-                    <div className="flex justify-between mb-3">
-                       <span className="text-sm font-black text-slate-800">{o.storeName}</span>
-                       <span className={`text-[10px] font-black px-4 py-1.5 rounded-full ${o.status === OrderStatus.DELIVERED ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
+                  <div key={o.id} className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden group">
+                    <div className="flex justify-between mb-4">
+                       <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500">
+                             <ShoppingBag size={20} />
+                          </div>
+                          <div>
+                            <span className="text-sm font-black text-slate-800 block">{o.storeName}</span>
+                            <p className="text-[10px] text-slate-400 font-bold">{new Date(o.timestamp).toLocaleString('ar-DZ')}</p>
+                          </div>
+                       </div>
+                       <span className={`text-[9px] h-fit font-black px-4 py-1.5 rounded-full ${o.status === OrderStatus.DELIVERED ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
                           {o.status}
                        </span>
                     </div>
-                    <p className="text-[10px] text-slate-400 font-bold mb-4">{new Date(o.timestamp).toLocaleString('ar-DZ')}</p>
-                    <div className="flex justify-between items-center pt-4 border-t border-slate-50">
-                       <span className="text-[#FF6000] font-black text-xl">{formatCurrency(o.totalPrice)}</span>
-                       <button className="text-xs font-black text-slate-600 bg-slate-50 px-5 py-2 rounded-xl border border-slate-100">عرض الفاتورة</button>
+                    
+                    <div className="flex items-center justify-between py-4 border-t border-slate-50">
+                       <div className="flex flex-col">
+                          <span className="text-[9px] text-slate-400 font-black uppercase">إجمالي الفاتورة</span>
+                          <span className="text-xl font-black text-slate-900 leading-none mt-1">{formatCurrency(o.totalPrice)}</span>
+                       </div>
+                       
+                       <div className="flex gap-2">
+                          <button onClick={() => setTrackingOrder(o)} className="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black text-[11px] flex items-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95 transition-all">
+                             <MapIcon size={14} /> تتبع الحالة
+                          </button>
+                          <button className="p-3 bg-slate-50 text-slate-400 rounded-2xl active:scale-95 transition-all"><ChevronLeft size={16} /></button>
+                       </div>
                     </div>
+
+                    {o.status === OrderStatus.ACCEPTED_BY_DRIVER && (
+                      <div className="bg-green-50 p-3 mt-1 rounded-2xl flex items-center gap-2">
+                         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                         <p className="text-[10px] font-black text-green-600">الموصل في الطريق إليك الآن</p>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -331,7 +443,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                    <>
                      <h3 className="text-2xl font-black text-slate-800 mb-1">{profileData.name || userName}</h3>
                      <p className="text-xs text-slate-400 font-bold mb-8">{profileData.phone || 'لم يتم إضافة هاتف'}</p>
-                     
                      <div className="grid grid-cols-2 gap-4 mb-8">
                         <div className="bg-slate-50 p-4 rounded-2xl">
                            <p className="text-[10px] text-slate-400 font-black mb-1 uppercase">الطلبات</p>
@@ -342,7 +453,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                            <p className="text-lg font-black text-orange-500">240</p>
                         </div>
                      </div>
-
                      <div className="space-y-3">
                         <button onClick={() => setIsEditingProfile(true)} className="w-full bg-[#F0F0F0] py-4 rounded-2xl font-black text-slate-700 text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"><User size={18} /> تعديل الحساب</button>
                         <button onClick={onLogout} className="w-full bg-red-50 py-4 rounded-2xl font-black text-red-500 text-sm flex items-center justify-center gap-2 mt-6"><LogOut size={18} /> خروج من كيمو</button>
@@ -359,12 +469,10 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                           <label className="text-[10px] font-black text-slate-400 pr-2">رقم الهاتف</label>
                           <input type="tel" value={profileData.phone} onChange={e => setProfileData({...profileData, phone: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all" />
                        </div>
-                       
                        <button onClick={handleUpdateLocation} disabled={isLocating} className="w-full py-4 border-2 border-dashed border-orange-200 text-orange-600 rounded-2xl font-black text-xs flex items-center justify-center gap-2 mt-4">
                           {isLocating ? <Loader2 className="animate-spin" /> : <Navigation size={16} />}
                           تحديث موقع التوصيل الحالي
                        </button>
-
                        <div className="flex gap-3 mt-8">
                           <button onClick={handleUpdateProfile} disabled={isUpdating} className="flex-1 bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all">حفظ البيانات</button>
                           <button onClick={() => setIsEditingProfile(false)} className="px-6 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black text-sm">إلغاء</button>
@@ -376,7 +484,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
         )}
       </main>
 
-      {/* Floating Checkout Button (Fixed and Improved) */}
       {cart.length > 0 && activeTab === 'HOME' && (
         <div className="fixed bottom-24 left-4 right-4 bg-white/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl p-3 z-[200] border border-white animate-slide-up flex items-center justify-between pl-6">
            <div className="flex items-center gap-4">
@@ -399,7 +506,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
         </div>
       )}
 
-      {/* Bottom Navigation Bar (Fixed Tab Navigation) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 h-20 flex justify-around items-center px-4 z-[500] shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
         <NavBtn act={activeTab === 'HOME'} onClick={() => { setActiveTab('HOME'); setSelectedCategory(null); }} icon={<Home />} label="الرئيسية" />
         <NavBtn act={activeTab === 'CATEGORIES'} onClick={() => setActiveTab('CATEGORIES')} icon={<LayoutGrid />} label="الأقسام" />
@@ -422,4 +528,13 @@ const NavBtn = ({ act, onClick, icon, label }: any) => (
     </div>
     <span className="text-[9px] font-black tracking-tighter">{label}</span>
   </button>
+);
+
+const StatusStep = ({ label, active, done }: { label: string; active: boolean; done: boolean }) => (
+  <div className="flex flex-col items-center gap-1">
+     <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${done ? 'bg-orange-500 text-white' : active ? 'bg-orange-100 text-orange-600 ring-2 ring-orange-500 ring-offset-2' : 'bg-slate-100 text-slate-300'}`}>
+        {done ? <CheckCircle2 size={12} /> : active ? <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div> : <Clock size={12} />}
+     </div>
+     <span className={`text-[8px] font-black uppercase ${active ? 'text-slate-800' : 'text-slate-300'}`}>{label}</span>
+  </div>
 );

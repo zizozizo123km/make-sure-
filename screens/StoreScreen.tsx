@@ -45,14 +45,16 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
 
   // Profile Edit States
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editProfileData, setEditProfileData] = useState({ name: '', phone: '' });
+  const [editProfileData, setEditProfileData] = useState({ name: '', phone: '', image: '' });
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
 
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
     name: '', description: '', price: 0, category: Category.FOOD, image: ''
   });
 
+  const profileImageInputRef = useRef<HTMLInputElement>(null);
   const currentStoreId = auth.currentUser?.uid;
 
   useEffect(() => {
@@ -62,7 +64,11 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
       if (snapshot.exists()) {
         const data = snapshot.val();
         setStoreProfile(data);
-        setEditProfileData({ name: data.name || '', phone: data.phone || '' });
+        setEditProfileData({ 
+          name: data.name || '', 
+          phone: data.phone || '', 
+          image: data.image || '' 
+        });
       }
     });
 
@@ -107,7 +113,8 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
     try {
       await update(ref(db, `stores/${currentStoreId}`), {
         name: editProfileData.name,
-        phone: editProfileData.phone
+        phone: editProfileData.phone,
+        image: editProfileData.image
       });
       setIsEditingProfile(false);
       alert("تم تحديث بيانات المتجر بنجاح ✓");
@@ -115,6 +122,18 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
       alert("حدث خطأ أثناء التحديث");
     } finally {
       setIsUpdatingProfile(false);
+    }
+  };
+
+  const handleProfileImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsUploadingProfileImage(true);
+      const url = await uploadImage(file);
+      if (url) {
+        setEditProfileData(prev => ({ ...prev, image: url }));
+      }
+      setIsUploadingProfileImage(false);
     }
   };
 
@@ -267,9 +286,29 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
              <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100 text-center relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-full h-2 brand-gradient"></div>
                 
-                <div className="w-32 h-32 rounded-[2.5rem] border-4 border-slate-50 overflow-hidden shadow-xl mx-auto mb-8 bg-slate-50 p-1">
-                   <img src={storeProfile?.image || `https://api.dicebear.com/7.x/identicon/svg?seed=${storeProfile?.name || userName}`} className="w-full h-full object-cover rounded-[2rem]" />
+                <div 
+                  className={`w-32 h-32 rounded-[2.5rem] border-4 border-slate-50 overflow-hidden shadow-xl mx-auto mb-8 bg-slate-50 p-1 relative group ${isEditingProfile ? 'cursor-pointer' : ''}`}
+                  onClick={() => isEditingProfile && !isUploadingProfileImage && profileImageInputRef.current?.click()}
+                >
+                   <img src={isEditingProfile ? editProfileData.image : (storeProfile?.image || `https://api.dicebear.com/7.x/identicon/svg?seed=${storeProfile?.name || userName}`)} className="w-full h-full object-cover rounded-[2rem]" />
+                   {isEditingProfile && (
+                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Camera className="text-white w-8 h-8" />
+                     </div>
+                   )}
+                   {isUploadingProfileImage && (
+                     <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+                        <Loader2 className="animate-spin text-orange-500" />
+                     </div>
+                   )}
                 </div>
+                <input 
+                  type="file" 
+                  ref={profileImageInputRef} 
+                  onChange={handleProfileImageUpload} 
+                  className="hidden" 
+                  accept="image/*" 
+                />
                 
                 {!isEditingProfile ? (
                   <>
@@ -320,7 +359,7 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                     <div className="flex gap-4 pt-6">
                        <button 
                          onClick={handleUpdateProfile}
-                         disabled={isUpdatingProfile}
+                         disabled={isUpdatingProfile || isUploadingProfileImage}
                          className="flex-1 brand-gradient text-white py-4 rounded-2xl font-black shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
                        >
                          {isUpdatingProfile ? <Loader2 className="animate-spin" /> : <Save className="w-5 h-5" />}

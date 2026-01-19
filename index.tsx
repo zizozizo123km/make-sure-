@@ -3,26 +3,19 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 
-// تسجيل الـ Service Worker بطريقة آمنة لتجنب أخطاء Origin Mismatch
+// تسجيل الـ Service Worker بطريقة مبسطة لتفادي أخطاء المسارات
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // استخدام URL مطلق لضمان أن المسار يتبع النطاق الحالي للتطبيق
-    const swPath = new URL('./service-worker.js', window.location.href).href;
-    
-    navigator.serviceWorker.register(swPath)
-      .then((registration) => {
-        console.log('Kimo SW registered successfully:', registration.scope);
-      })
-      .catch((error) => {
-        // سجل الخطأ في وحدة التحكم فقط دون تعطيل التطبيق
-        console.warn('Service Worker registration skipped or failed:', error.message);
-      });
+    // استخدام مسار مباشر يضمن التوافق مع جميع البيئات
+    navigator.serviceWorker.register('service-worker.js')
+      .then((reg) => console.log('Kimo SW Active:', reg.scope))
+      .catch((err) => console.warn('SW Status:', err.message));
   });
 }
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
+  throw new Error("Root element not found");
 }
 
 const root = createRoot(rootElement);
