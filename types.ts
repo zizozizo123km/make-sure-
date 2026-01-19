@@ -1,3 +1,4 @@
+
 export enum UserRole {
   GUEST = 'GUEST',
   CUSTOMER = 'CUSTOMER',
@@ -8,7 +9,8 @@ export enum UserRole {
 export enum OrderStatus {
   PENDING = 'PENDING',               // Customer placed it, waiting for store
   ACCEPTED_BY_STORE = 'ACCEPTED_BY_STORE', // Store accepted, waiting for driver
-  ACCEPTED_BY_DRIVER = 'ACCEPTED_BY_DRIVER', // Driver accepted, on the way
+  ACCEPTED_BY_DRIVER = 'ACCEPTED_BY_DRIVER', // Driver accepted, on the way to Store
+  PICKED_UP = 'PICKED_UP',           // Driver got the order from store, on the way to Customer
   DELIVERED = 'DELIVERED',           // Complete
   CANCELLED = 'CANCELLED'
 }
@@ -59,7 +61,7 @@ export interface Order {
   storePhone?: string; 
   driverId?: string;
   driverName?: string;
-  driverPhone?: string; // أضفنا رقم هاتف الموصل هنا
+  driverPhone?: string;
   products: {product: Product, quantity: number}[];
   totalPrice: number;
   deliveryFee: number;

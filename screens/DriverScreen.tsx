@@ -5,7 +5,8 @@ import { RatingModal } from '../components/RatingModal';
 import { 
   MapPin, Navigation, CheckCircle, Clock, Loader2, Package, Bike, 
   ArrowRight, User, LogOut, Camera, Phone, RefreshCw, Save,
-  ChevronLeft, ShoppingBag, Star, LayoutGrid, Home, X, Bot, Map as MapIcon
+  ChevronLeft, ShoppingBag, Star, LayoutGrid, Home, X, Bot, Map as MapIcon,
+  Store as StoreIcon, PhoneCall
 } from 'lucide-react';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, update, off } from 'firebase/database';
@@ -58,7 +59,7 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
         if (data) {
             Object.keys(data).forEach(key => {
                 const order = { ...data[key], id: key } as Order;
-                if (order.driverId === currentDriverId && order.status !== OrderStatus.DELIVERED) myActive = order;
+                if (order.driverId === currentDriverId && order.status !== OrderStatus.DELIVERED && order.status !== OrderStatus.CANCELLED) myActive = order;
                 if (order.status === OrderStatus.ACCEPTED_BY_STORE && !order.driverId) available.push(order);
             });
         }
@@ -79,6 +80,7 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
 
   const handleAcceptOrder = async (orderId: string) => {
       if (!currentDriverId) return;
+      // نحتاج لجلب رقم هاتف المتجر إذا لم يكن موجوداً في الطلب
       await update(ref(db, `orders/${orderId}`), {
           status: OrderStatus.ACCEPTED_BY_DRIVER,
           driverId: currentDriverId,
@@ -86,6 +88,11 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
           driverPhone: driverProfile?.phone || ''
       });
       setActiveTab('ACTIVE');
+  };
+
+  const handlePickUpOrder = async () => {
+    if (!activeOrder) return;
+    await update(ref(db, `orders/${activeOrder.id}`), { status: OrderStatus.PICKED_UP });
   };
 
   const handleCompleteOrder = async () => {
@@ -103,48 +110,73 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
          <RatingModal type="CUSTOMER" targetId={activeOrder.customerId} targetName={activeOrder.customerName} onClose={() => { setShowRating(false); setActiveTab('AVAILABLE'); }} />
        )}
 
-       {/* Special Full Screen Tracking for Driver */}
+       {/* Active Task View - Full Screen */}
        {activeTab === 'ACTIVE' && activeOrder && (
          <div className="fixed inset-0 z-[1000] bg-white animate-fade-in flex flex-col">
            <div className="p-4 flex items-center justify-between border-b border-slate-100 bg-white shadow-sm">
              <button onClick={() => setActiveTab('AVAILABLE')} className="p-2 bg-slate-100 rounded-full active:scale-90"><ChevronLeft size={20} className="rotate-180"/></button>
              <div className="text-center">
-                <h3 className="font-black text-slate-800 text-sm">مهمة توصيل نشطة</h3>
-                <p className="text-[9px] font-bold text-slate-400">رقم الطلب: #{activeOrder.id?.slice(-5).toUpperCase()}</p>
+                <h3 className="font-black text-slate-800 text-sm">
+                  {activeOrder.status === OrderStatus.ACCEPTED_BY_DRIVER ? 'التوجه للمتجر' : 'التوجه للزبون'}
+                </h3>
+                <p className="text-[9px] font-bold text-slate-400">طلب #{activeOrder.id?.slice(-5).toUpperCase()}</p>
              </div>
              <div className="w-10"></div>
            </div>
            
            <div className="flex-1 relative">
-             <MapVisualizer height="h-full" zoom={15} customerLocation={activeOrder.coordinates} storeLocation={activeOrder.storeCoordinates} driverLocation={driverProfile?.coordinates} />
+             <MapVisualizer 
+                height="h-full" 
+                zoom={15} 
+                customerLocation={activeOrder.coordinates} 
+                storeLocation={activeOrder.storeCoordinates} 
+                driverLocation={driverProfile?.coordinates} 
+             />
            </div>
 
            <div className="bg-white p-6 rounded-t-[3rem] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] -mt-10 z-[1001] relative border-t border-slate-50">
              <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-6"></div>
              
-             <div className="flex items-center gap-4 mb-6 bg-slate-50 p-4 rounded-[2rem]">
-               <div className="w-14 h-14 brand-gradient rounded-2xl flex items-center justify-center text-white shadow-lg"><User size={28} /></div>
-               <div className="flex-1">
-                 <h4 className="font-black text-slate-800 text-base">{activeOrder.customerName}</h4>
-                 <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1"><MapPin size={10}/> {activeOrder.address}</p>
+             {/* Target Info Card */}
+             {activeOrder.status === OrderStatus.ACCEPTED_BY_DRIVER ? (
+               <div className="animate-fade-in">
+                  <div className="flex items-center gap-4 mb-6 bg-orange-50 p-4 rounded-[2rem] border border-orange-100">
+                    <div className="w-14 h-14 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-lg"><StoreIcon size={28} /></div>
+                    <div className="flex-1">
+                      <p className="text-[9px] font-black text-orange-500 uppercase">المتجر المستهدف</p>
+                      <h4 className="font-black text-slate-800 text-base">{activeOrder.storeName}</h4>
+                    </div>
+                    {activeOrder.storePhone && (
+                      <a href={`tel:${activeOrder.storePhone}`} className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-orange-500 shadow-md active:scale-90 transition-all border border-orange-100"><PhoneCall size={20} /></a>
+                    )}
+                  </div>
+                  <button onClick={handlePickUpOrder} className="w-full bg-slate-900 text-white py-5 rounded-[2rem] font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
+                    <Package size={24} /> تم استلام الطلب من المتجر
+                  </button>
                </div>
-               <a href={`tel:${activeOrder.customerPhone}`} className="w-12 h-12 bg-green-500 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-all"><Phone size={20} /></a>
+             ) : (
+               <div className="animate-fade-in">
+                  <div className="flex items-center gap-4 mb-6 bg-blue-50 p-4 rounded-[2rem] border border-blue-100">
+                    <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg"><User size={28} /></div>
+                    <div className="flex-1">
+                      <p className="text-[9px] font-black text-blue-500 uppercase">الزبون المستهدف</p>
+                      <h4 className="font-black text-slate-800 text-base">{activeOrder.customerName}</h4>
+                      <p className="text-[9px] text-slate-400 font-bold truncate max-w-[150px]">{activeOrder.address}</p>
+                    </div>
+                    {activeOrder.customerPhone && (
+                      <a href={`tel:${activeOrder.customerPhone}`} className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-md active:scale-90 transition-all border border-blue-100"><PhoneCall size={20} /></a>
+                    )}
+                  </div>
+                  <button onClick={handleCompleteOrder} className="w-full brand-gradient text-white py-5 rounded-[2rem] font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
+                    <CheckCircle size={24} /> تم تسليم الطلبية للزبون
+                  </button>
+               </div>
+             )}
+             
+             <div className="mt-4 flex justify-between items-center px-4">
+                <span className="text-[10px] font-black text-slate-400">إجمالي الفاتورة: {formatCurrency(activeOrder.totalPrice)}</span>
+                <span className="text-[10px] font-black text-green-600">توصيل: {formatCurrency(activeOrder.deliveryFee || 200)}</span>
              </div>
-
-             <div className="grid grid-cols-2 gap-3 mb-6">
-                <div className="bg-slate-50 p-4 rounded-2xl">
-                   <p className="text-[10px] text-slate-400 font-black mb-1">المتجر</p>
-                   <p className="text-xs font-black text-slate-800 truncate">{activeOrder.storeName}</p>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-2xl">
-                   <p className="text-[10px] text-slate-400 font-black mb-1">المبلغ المحصل</p>
-                   <p className="text-xs font-black text-orange-600">{formatCurrency(activeOrder.totalPrice)}</p>
-                </div>
-             </div>
-
-             <button onClick={handleCompleteOrder} className="w-full brand-gradient text-white py-5 rounded-[2rem] font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 mb-2">
-                <CheckCircle size={24} /> تم تسليم الطلبية بنجاح
-             </button>
            </div>
          </div>
        )}
@@ -238,7 +270,7 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
          )}
        </main>
 
-       {/* Bottom Nav Consistent with Others */}
+       {/* Bottom Nav */}
        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 h-20 flex justify-around items-center px-4 z-[500] shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
          <NavBtn act={activeTab === 'AVAILABLE'} onClick={() => setActiveTab('AVAILABLE')} icon={<LayoutGrid />} label="طلبات عامة" />
          <NavBtn act={activeTab === 'ACTIVE'} onClick={() => setActiveTab('ACTIVE')} icon={<MapIcon />} label="المهمة الحالية" />
