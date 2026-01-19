@@ -9,7 +9,7 @@ import {
   Camera, LogOut, ClipboardList, Trash2, Star, ShieldCheck, 
   LayoutGrid, Save, RefreshCw, Phone, Sparkles, Navigation, X, Bot, Send,
   ChevronLeft, ShoppingBag, Heart, Filter, CheckCircle2, Layout, Bike, PhoneCall,
-  Clock, Map as MapIcon, Timer, Truck, ArrowRight, CheckCircle
+  Clock, Map as MapIcon, Timer, Truck, ArrowRight, CheckCircle, Edit3
 } from 'lucide-react';
 import { MapVisualizer } from '../components/MapVisualizer';
 
@@ -28,7 +28,9 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [driverLiveCoords, setDriverLiveCoords] = useState<Coordinates | null>(null);
 
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileData, setProfileData] = useState({ name: '', phone: '', coordinates: null as any });
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const user = auth.currentUser;
 
@@ -137,12 +139,28 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
     }
   };
 
+  const handleUpdateProfile = async () => {
+    if (!user || !profileData.name) return;
+    setIsUpdating(true);
+    try {
+      await update(ref(db, `customers/${user.uid}`), { 
+        name: profileData.name, 
+        phone: profileData.phone 
+      });
+      setIsEditingProfile(false);
+    } catch (e) {
+      alert("فشل تحديث البيانات");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   if (loading) return <div className="h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-orange-500 w-12 h-12" /></div>;
 
   return (
     <div className="bg-[#F4F4F4] min-h-screen pb-40 font-cairo text-right" dir="rtl">
       
-      {/* Checkout Drawer (تأكيد الطلب) */}
+      {/* Checkout Drawer */}
       {showCheckout && (
         <div className="fixed inset-0 z-[2000] bg-slate-900/60 backdrop-blur-sm animate-fade-in flex items-end">
            <div className="w-full bg-white rounded-t-[3rem] p-8 animate-slide-up shadow-2xl flex flex-col max-h-[90vh]">
@@ -262,7 +280,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
         </div>
       )}
 
-      {/* Main UI Header */}
+      {/* Header */}
       {activeTab === 'HOME' && !searchQuery && !selectedCategory && (
         <div className="bg-gradient-to-b from-[#E62E04] to-[#FF6000] pt-12 pb-8 px-6 text-center text-white relative overflow-hidden">
            <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
@@ -353,7 +371,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                     </div>
                     <div className="flex items-center justify-between py-4 border-t border-slate-50">
                        <span className="text-xl font-black text-slate-900 leading-none">{formatCurrency(o.totalPrice)}</span>
-                       <button onClick={() => setTrackingOrder(o)} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[11px] flex items-center gap-2 shadow-lg active:scale-95 transition-all"><MapIcon size={14} /> تتبع الحالة</button>
+                       <button onClick={() => setTrackingOrder(o)} className="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black text-[11px] flex items-center gap-2 shadow-lg active:scale-95 transition-all"><MapIcon size={14} /> تتبع الحالة</button>
                     </div>
                   </div>
                 ))
@@ -363,19 +381,68 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
 
         {activeTab === 'PROFILE' && (
            <div className="animate-fade-in-up">
-              <div className="bg-white p-10 rounded-[3rem] shadow-sm text-center border border-slate-50">
+              <div className="bg-white p-10 rounded-[3rem] shadow-sm text-center border border-slate-50 relative overflow-hidden">
                  <div className="w-28 h-28 bg-slate-50 rounded-[2.5rem] mx-auto mb-6 border-4 border-white shadow-xl overflow-hidden relative">
                     <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userName}`} className="w-full h-full" />
                  </div>
-                 <h3 className="text-2xl font-black text-slate-800 mb-1">{profileData.name || userName}</h3>
-                 <p className="text-xs text-slate-400 font-bold mb-8">{profileData.phone || 'لم يتم إضافة هاتف'}</p>
-                 <button onClick={onLogout} className="w-full bg-red-50 py-4 rounded-2xl font-black text-red-500 text-sm flex items-center justify-center gap-2 mt-6"><LogOut size={18} /> خروج من كيمو</button>
+                 
+                 {!isEditingProfile ? (
+                   <>
+                     <h3 className="text-2xl font-black text-slate-800 mb-1">{profileData.name || userName}</h3>
+                     <p className="text-xs text-slate-400 font-bold mb-8">{profileData.phone || 'لم يتم إضافة هاتف'}</p>
+                     
+                     <div className="space-y-3">
+                       <button onClick={() => setIsEditingProfile(true)} className="w-full bg-slate-100 py-4 rounded-2xl font-black text-slate-700 text-sm flex items-center justify-center gap-2 active:scale-95 transition-all">
+                         <Edit3 size={18} /> تعديل الملف الشخصي
+                       </button>
+                       <button onClick={onLogout} className="w-full bg-red-50 py-4 rounded-2xl font-black text-red-500 text-sm flex items-center justify-center gap-2 mt-6">
+                         <LogOut size={18} /> خروج من كيمو
+                       </button>
+                     </div>
+                   </>
+                 ) : (
+                   <div className="space-y-6 text-right animate-scale-up">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 pr-2 uppercase">الاسم بالكامل</label>
+                        <input 
+                          type="text" 
+                          value={profileData.name} 
+                          onChange={e => setProfileData({...profileData, name: e.target.value})} 
+                          className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 pr-2 uppercase">رقم الهاتف</label>
+                        <input 
+                          type="tel" 
+                          value={profileData.phone} 
+                          onChange={e => setProfileData({...profileData, phone: e.target.value})} 
+                          className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-orange-500 transition-all"
+                        />
+                      </div>
+                      <div className="flex gap-3 pt-4">
+                        <button 
+                          onClick={handleUpdateProfile} 
+                          disabled={isUpdating}
+                          className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all flex items-center justify-center"
+                        >
+                          {isUpdating ? <Loader2 className="animate-spin" /> : 'حفظ التغييرات'}
+                        </button>
+                        <button 
+                          onClick={() => setIsEditingProfile(false)} 
+                          className="px-6 bg-slate-100 text-slate-400 py-4 rounded-2xl font-black text-sm"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                   </div>
+                 )}
               </div>
            </div>
         )}
       </main>
 
-      {/* Floating Cart Confirmation Bar */}
+      {/* Floating Cart Bar */}
       {cart.length > 0 && !showCheckout && activeTab === 'HOME' && (
         <div className="fixed bottom-24 left-4 right-4 z-[400] animate-slide-up">
            <button 
