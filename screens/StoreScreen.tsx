@@ -7,7 +7,7 @@ import {
   Package, Plus, Upload, Loader2, Trash2, ArrowLeft, 
   ClipboardList, CheckCircle, Camera, LogOut, User, 
   RefreshCw, Phone, Tag, Sparkles, Wand2, Save, MapPin, Navigation,
-  ChevronLeft, ShoppingBag, Star, LayoutGrid, Home, Edit3, Store
+  ChevronLeft, ShoppingBag, Star, LayoutGrid, Home, Edit3, Store, FileText
 } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import { generateProductDescription } from '../services/geminiService';
@@ -132,7 +132,6 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
   const handleProfileImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // معاينة محلية فورية
       const localUrl = URL.createObjectURL(file);
       setEditProfileData(prev => ({ ...prev, image: localUrl }));
       
@@ -158,7 +157,6 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
   return (
     <div className="bg-[#F4F4F4] min-h-screen pb-32 font-cairo text-right" dir="rtl">
       
-      {/* Header */}
       <header className="bg-white sticky top-0 z-[100] px-6 pt-8 pb-4 shadow-sm flex items-center justify-between">
         <div>
            <h1 className="text-2xl font-black text-slate-800">كيمو متاجر</h1>
@@ -250,6 +248,29 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
                         </div>
                         <span className="text-orange-500 font-black text-xl">{formatCurrency(o.totalPrice)}</span>
                      </div>
+                     
+                     {/* عرض المنتجات المطلوبة للمتجر */}
+                     <div className="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100">
+                        <p className="text-[10px] font-black text-slate-400 uppercase mb-2">المنتجات المطلوبة:</p>
+                        {o.products.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-sm font-bold text-slate-700 py-1">
+                             <span>{item.product.name} × {item.quantity}</span>
+                             <span className="text-orange-600 text-[11px]">{formatCurrency(item.product.price * item.quantity)}</span>
+                          </div>
+                        ))}
+                     </div>
+
+                     {/* عرض الملاحظات الإضافية */}
+                     {o.notes && (
+                       <div className="bg-orange-50 p-4 rounded-2xl mb-6 border border-orange-100 flex gap-3">
+                          <FileText size={16} className="text-orange-500 shrink-0" />
+                          <div>
+                             <p className="text-[9px] font-black text-orange-500 uppercase leading-none mb-1">وصف إضافي من الزبون:</p>
+                             <p className="text-xs font-bold text-slate-800 leading-relaxed">{o.notes}</p>
+                          </div>
+                       </div>
+                     )}
+
                      <div className="flex items-center gap-2 mb-6 bg-slate-50 p-3 rounded-2xl">
                         <MapPin size={14} className="text-slate-400" />
                         <p className="text-[10px] font-bold text-slate-600 truncate">{o.address}</p>
@@ -338,7 +359,6 @@ export const StoreScreen: React.FC<StoreScreenProps> = ({ onLogout, userName }) 
         )}
       </main>
 
-      {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 h-20 flex justify-around items-center px-4 z-[500] shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
         <NavBtn act={activeTab === 'PRODUCTS'} onClick={() => setActiveTab('PRODUCTS')} icon={<LayoutGrid />} label="منتجاتي" />
         <NavBtn act={activeTab === 'ORDERS'} onClick={() => setActiveTab('ORDERS')} icon={<ClipboardList />} label="الطلبيات" />

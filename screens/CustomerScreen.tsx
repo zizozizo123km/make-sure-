@@ -10,7 +10,7 @@ import {
   LayoutGrid, Save, RefreshCw, Phone, Sparkles, Navigation, X, Bot, Send,
   ChevronLeft, ShoppingBag, Heart, Filter, CheckCircle2, Layout, Bike, PhoneCall,
   Clock, Map as MapIcon, Timer, Truck, ArrowRight, CheckCircle, Edit3, ShoppingBasket,
-  Utensils, Shirt, Smartphone, Briefcase, BabyIcon, MessageSquareQuote
+  Utensils, Shirt, Smartphone, Briefcase, BabyIcon, MessageSquareQuote, FileText
 } from 'lucide-react';
 import { MapVisualizer } from '../components/MapVisualizer';
 import { RatingModal } from '../components/RatingModal';
@@ -44,6 +44,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [orderNotes, setOrderNotes] = useState('');
   
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [ratingOrder, setRatingOrder] = useState<Order | null>(null);
@@ -54,7 +55,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   
-  // مرجع لمنع تحديث الواجهة ببيانات قديمة من السيرفر فور الرفع
   const isUpdatingRef = useRef(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,7 +96,6 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
 
     const userProfileRef = ref(db, `customers/${user.uid}`);
     onValue(userProfileRef, (snap) => {
-      // نحدث الحالة فقط إذا لم نكن في مرحلة رفع صورة حالية لمنع "الصورة البيضاء"
       if (snap.exists() && !isUpdatingRef.current) {
         const data = snap.val();
         setProfileData({ 
@@ -122,7 +121,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && user) {
-      isUpdatingRef.current = true; // تفعيل القفل لمنع تحديثات onValue
+      isUpdatingRef.current = true;
       const localPreviewUrl = URL.createObjectURL(file);
       setProfileData(prev => ({ ...prev, avatar: localPreviewUrl }));
       setIsUploadingAvatar(true);
@@ -130,11 +129,8 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
       try {
         const remoteUrl = await uploadImage(file);
         if (remoteUrl) {
-          // تحديث السيرفر أولاً
           await update(ref(db, `customers/${user.uid}`), { avatar: remoteUrl });
-          // تحديث الواجهة فوراً بالرابط الجديد
           setProfileData(prev => ({ ...prev, avatar: remoteUrl }));
-          // ننتظر قليلاً قبل السماح لـ onValue بالعمل مرة أخرى لضمان ثبات البيانات في السيرفر
           setTimeout(() => { isUpdatingRef.current = false; }, 4000);
         } else {
           isUpdatingRef.current = false;
@@ -183,6 +179,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
         status: OrderStatus.PENDING, 
         timestamp: Date.now(),
         address: "بئر العاتر",
+        notes: orderNotes.trim(), // إرسال الملاحظات
         customerPhone: profileData.phone || '',
         coordinates: profileData.coordinates || { lat: 34.7495, lng: 8.0617 },
         storeCoordinates: store?.coordinates || { lat: 34.7495, lng: 8.0617 }
@@ -191,6 +188,7 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
       const newOrderRef = push(ref(db, 'orders'));
       await set(newOrderRef, orderData);
       setCart([]); 
+      setOrderNotes('');
       setShowCheckout(false);
       setActiveTab('ORDERS');
     } catch (error) {
@@ -288,6 +286,20 @@ export const CustomerScreen: React.FC<{onLogout: () => void, userName: string}> 
                       </div>
                    </div>
                  ))}
+
+                 {/* حقل الملاحظات الإضافية */}
+                 <div className="bg-slate-50 p-6 rounded-[2rem] space-y-3 mt-4">
+                    <div className="flex items-center gap-2 text-slate-700 mb-2">
+                       <FileText size={16} />
+                       <span className="text-xs font-black">وصف إضافي أو ملاحظات</span>
+                    </div>
+                    <textarea 
+                      placeholder="مثلاً: بدون بصل، الطابق الثاني، البيت بجوار المسجد..."
+                      value={orderNotes}
+                      onChange={(e) => setOrderNotes(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-xs font-bold outline-none h-24 resize-none focus:border-orange-500 transition-all"
+                    />
+                 </div>
               </div>
 
               <div className="bg-slate-50 p-6 rounded-[2.5rem] space-y-3 mb-8 shrink-0">

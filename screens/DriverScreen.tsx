@@ -6,7 +6,7 @@ import {
   MapPin, Navigation, CheckCircle, Clock, Loader2, Package, Bike, 
   ArrowRight, User, LogOut, Camera, Phone, RefreshCw, Save,
   ChevronLeft, ShoppingBag, Star, LayoutGrid, Home, X, Bot, Map as MapIcon,
-  Store as StoreIcon, PhoneCall, Edit3
+  Store as StoreIcon, PhoneCall, Edit3, FileText
 } from 'lucide-react';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, update, off } from 'firebase/database';
@@ -100,7 +100,6 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
       if (url) {
         setEditData(prev => ({ ...prev, avatar: url }));
         if (currentDriverId) {
-          // تحديث فوري في السيرفر لضمان ثبات الصورة
           await update(ref(db, `drivers/${currentDriverId}`), { avatar: url });
         }
       }
@@ -155,7 +154,6 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
          <RatingModal type="CUSTOMER" targetId={activeOrder.customerId} targetName={activeOrder.customerName} onClose={() => { setShowRating(false); setActiveTab('AVAILABLE'); }} />
        )}
 
-       {/* Active Task View - Full Screen */}
        {activeTab === 'ACTIVE' && activeOrder && (
          <div className="fixed inset-0 z-[1000] bg-white animate-fade-in flex flex-col">
            <div className="p-4 flex items-center justify-between border-b border-slate-100 bg-white shadow-sm">
@@ -182,7 +180,17 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
            <div className="bg-white p-6 rounded-t-[3rem] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] -mt-10 z-[1001] relative border-t border-slate-50">
              <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-6"></div>
              
-             {/* Target Info Card */}
+             {/* عرض ملاحظات الزبون للموصل */}
+             {activeOrder.notes && (
+               <div className="bg-orange-50 p-4 rounded-2xl mb-4 border border-orange-100 flex gap-3 animate-fade-in">
+                  <FileText size={16} className="text-orange-500 shrink-0" />
+                  <div>
+                     <p className="text-[9px] font-black text-orange-500 uppercase leading-none mb-1">وصف إضافي من الزبون:</p>
+                     <p className="text-xs font-bold text-slate-800 leading-tight">{activeOrder.notes}</p>
+                  </div>
+               </div>
+             )}
+
              {activeOrder.status === OrderStatus.ACCEPTED_BY_DRIVER ? (
                <div className="animate-fade-in">
                   <div className="flex items-center gap-4 mb-6 bg-orange-50 p-4 rounded-[2rem] border border-orange-100">
@@ -190,6 +198,8 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
                     <div className="flex-1">
                       <p className="text-[9px] font-black text-orange-500 uppercase">المتجر المستهدف</p>
                       <h4 className="font-black text-slate-800 text-base">{activeOrder.storeName}</h4>
+                      {/* عرض أسماء المنتجات للموصل */}
+                      <p className="text-[10px] text-slate-500 font-bold">المنتجات: {activeOrder.products.map(p => p.product.name).join('، ')}</p>
                     </div>
                     {activeOrder.storePhone && (
                       <a href={`tel:${activeOrder.storePhone}`} className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-orange-500 shadow-md active:scale-90 transition-all border border-orange-100"><PhoneCall size={20} /></a>
@@ -257,6 +267,12 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
                         </div>
                         <span className="text-lg font-black text-orange-600">{formatCurrency(o.totalPrice)}</span>
                      </div>
+                     
+                     {/* عرض ملخص المنتجات للموصل قبل القبول */}
+                     <div className="mb-4 text-[11px] font-bold text-slate-600">
+                        المنتجات: {o.products.map(p => p.product.name).join('، ')}
+                     </div>
+
                      <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-2 mb-6">
                         <MapPin size={14} className="text-slate-400" />
                         <p className="text-[10px] font-bold text-slate-500 truncate">{o.address}</p>
@@ -342,7 +358,6 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
          )}
        </main>
 
-       {/* Bottom Nav */}
        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 h-20 flex justify-around items-center px-4 z-[500] shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
          <NavBtn act={activeTab === 'AVAILABLE'} onClick={() => setActiveTab('AVAILABLE')} icon={<LayoutGrid />} label="طلبات عامة" />
          <NavBtn act={activeTab === 'ACTIVE'} onClick={() => setActiveTab('ACTIVE')} icon={<MapIcon />} label="المهمة الحالية" />

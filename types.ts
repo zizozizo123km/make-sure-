@@ -68,6 +68,7 @@ export interface Order {
   status: OrderStatus;
   timestamp: number;
   address: string;
+  notes?: string; // ملاحظات إضافية من الزبون
   coordinates?: Coordinates;
   storeCoordinates?: Coordinates;
 }
