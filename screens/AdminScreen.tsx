@@ -2,15 +2,16 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../services/firebase';
 import { ref, onValue, update, remove, set } from 'firebase/database';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { 
   ShieldCheck, Users, Store, Bike, Lock, Unlock, 
-  Send, Loader2, ArrowLeft, LogOut, Bell, Settings,
+  Send, Loader2, LogOut, Bell, Settings,
   Activity, Database, CheckCircle2, Trash2,
   LayoutDashboard, ShoppingBag, Search, Filter, 
   MapPin, Phone, Star, Eye, CreditCard,
   AlertTriangle, Radio, Clock, Mail, ShieldAlert,
-  UserCheck, ExternalLink, Calendar, RefreshCw, Zap
+  UserCheck, ExternalLink, Calendar, RefreshCw, Zap,
+  Eraser, Bomb
 } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import { Order, OrderStatus } from '../types';
@@ -130,21 +131,14 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     } finally { setLoadingAction(null); }
   };
 
-  // وظيفة تحديث التطبيق الإجباري لجميع المستخدمين
   const handleForceUpdateApp = async () => {
-    if (!window.confirm('هل تريد فعلاً إجبار جميع المستخدمين على تحديث التطبيق؟ سيتم إعادة تحميل الصفحة لديهم فوراً.')) return;
+    if (!window.confirm('هل تريد فعلاً إجبار جميع المستخدمين على تحديث التطبيق؟')) return;
     setLoadingAction('UPDATE');
     try {
-      await update(ref(db, 'app_settings'), { 
-        versionCode: Date.now() // توليد رقم إصدار جديد بناءً على الوقت الحالي
-      });
+      await update(ref(db, 'app_settings'), { versionCode: Date.now() });
       setSuccessAction('UPDATE');
       setTimeout(() => setSuccessAction(null), 2000);
-    } catch (err) {
-      alert('فشل إرسال طلب التحديث');
-    } finally {
-      setLoadingAction(null);
-    }
+    } finally { setLoadingAction(null); }
   };
 
   const toggleLock = async () => {
@@ -156,22 +150,63 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
     } finally { setLoadingAction(null); }
   };
 
-  const toggleStoreVerification = async (storeId: string, currentStatus: boolean) => {
-    await update(ref(db, `stores/${storeId}`), { isVerified: !currentStatus });
+  const handleDeleteAllProducts = async () => {
+    const confirm1 = window.confirm('⚠ تحذير نهائي: هل تريد حقاً حذف جميع المنتجات من كافة المتاجر؟ لا يمكن التراجع عن هذه العملية.');
+    if (!confirm1) return;
+    
+    const confirm2 = window.confirm('سوف يتم مسح عقدة المنتجات بالكامل ليكون التطبيق نظيفاً للنشر. هل أنت متأكد؟');
+    if (!confirm2) return;
+
+    setLoadingAction('CLEAR_PRODUCTS');
+    try {
+      await remove(ref(db, 'products'));
+      setSuccessAction('CLEAR_PRODUCTS');
+      alert("تم مسح كافة المنتجات بنجاح. التطبيق الآن جاهز للنشر بنسخة نظيفة.");
+      setTimeout(() => setSuccessAction(null), 3000);
+    } catch (err: any) {
+      alert("فشل المسح: " + err.message);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleDeleteAllOrders = async () => {
+    if (!window.confirm('هل تريد مسح سجل الطلبيات بالكامل لتنظيف الداتا بيس؟')) return;
+    setLoadingAction('CLEAR_ORDERS');
+    try {
+      await remove(ref(db, 'orders'));
+      setSuccessAction('CLEAR_ORDERS');
+      alert("تم مسح سجل الطلبيات.");
+      setTimeout(() => setSuccessAction(null), 3000);
+    } finally { setLoadingAction(null); }
   };
 
   const handleDelete = async (path: string, id: string) => {
-    if (window.confirm('حذف نهائي؟')) {
-      await remove(ref(db, `${path}/${id}`));
+    if (window.confirm('هل أنت متأكد من الحذف النهائي؟ لا يمكن التراجع عن هذه الخطوة.')) {
+      setLoadingAction(`DELETE_${id}`);
+      try {
+        await remove(ref(db, `${path}/${id}`));
+        setSuccessAction(`DELETE_${id}`);
+        setTimeout(() => setSuccessAction(null), 1500);
+      } catch (err: any) {
+        console.error("Delete failed:", err);
+        if (err.message.includes("PERMISSION_DENIED")) {
+          alert("خطأ: تم رفض الصلاحية. يرجى تحديث قواعد Firebase (Rules) في لوحة التحكم.");
+        } else {
+          alert("فشل الحذف: " + err.message);
+        }
+      } finally {
+        setLoadingAction(null);
+      }
     }
   };
 
   const getFilteredData = () => {
     const q = searchQuery.toLowerCase();
     switch(activeTab) {
-      case 'CUSTOMERS': return customers.filter(c => c.name?.toLowerCase().includes(q));
-      case 'STORES': return stores.filter(s => s.name?.toLowerCase().includes(q));
-      case 'DRIVERS': return drivers.filter(d => d.name?.toLowerCase().includes(q));
+      case 'CUSTOMERS': return customers.filter(c => c.name?.toLowerCase().includes(q) || c.phone?.includes(q));
+      case 'STORES': return stores.filter(s => s.name?.toLowerCase().includes(q) || s.phone?.includes(q));
+      case 'DRIVERS': return drivers.filter(d => d.name?.toLowerCase().includes(q) || d.phone?.includes(q));
       case 'ORDERS': return orders.filter(o => o.id?.toLowerCase().includes(q) || o.storeName?.toLowerCase().includes(q));
       default: return [];
     }
@@ -230,13 +265,13 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
            <h2 className="text-2xl font-black text-slate-800">مركز التحكم المركزي</h2>
            <div className="flex items-center gap-4">
               <div className="relative">
-                 <input type="text" placeholder="بحث..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-100 border-none rounded-2xl py-3 pr-12 pl-6 text-sm font-bold w-64 outline-none" />
+                 <input type="text" placeholder="بحث باسم أو رقم..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-100 border-none rounded-2xl py-3 pr-12 pl-6 text-sm font-bold w-64 outline-none" />
                  <Search className="absolute right-4 top-3.5 w-5 h-5 text-slate-400" />
               </div>
            </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-10 space-y-10">
+        <div className="flex-1 overflow-y-auto p-10 space-y-10 pb-20">
            {activeTab === 'DASHBOARD' && (
              <div className="animate-fade-in-up space-y-10">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -247,7 +282,6 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                   {/* قسم بث الإشعارات */}
                    <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-white">
                       <h3 className="text-xl font-black mb-6 flex items-center gap-3"><Bell className="w-6 h-6 text-orange-500" /> بث إشعار فوري</h3>
                       <textarea 
@@ -261,11 +295,10 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                       </button>
                    </div>
 
-                   {/* قسم تحديث التطبيق وحالة النظام */}
                    <div className="space-y-6">
                       <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-white">
                         <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-blue-600"><RefreshCw className="w-6 h-6" /> إدارة الإصدارات</h3>
-                        <p className="text-xs text-slate-400 font-bold mb-6">سيؤدي هذا الخيار إلى إجبار جميع المستخدمين على إعادة تحميل التطبيق لمسح الذاكرة المؤقتة (Cache) والحصول على آخر التعديلات.</p>
+                        <p className="text-xs text-slate-400 font-bold mb-6">إجبار المستخدمين على التحديث لمسح الكاش.</p>
                         <button 
                           onClick={handleForceUpdateApp}
                           disabled={loadingAction === 'UPDATE'}
@@ -286,25 +319,123 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onExit }) => {
                       </div>
                    </div>
                 </div>
+
+                {/* ⚠ Danger Zone for Cleaning Database before Launch */}
+                <div className="bg-red-50 p-10 rounded-[3.5rem] border-2 border-dashed border-red-200">
+                   <div className="flex items-center gap-4 mb-8">
+                      <div className="w-12 h-12 bg-red-500 text-white rounded-2xl flex items-center justify-center shadow-lg"><Bomb size={24} /></div>
+                      <div>
+                         <h3 className="text-xl font-black text-red-700">منطقة الخطر (تنظيف ما قبل النشر)</h3>
+                         <p className="text-xs text-red-400 font-bold">استخدم هذه الخيارات لمسح بيانات الاختبار قبل إطلاق التطبيق رسمياً.</p>
+                      </div>
+                   </div>
+
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <button 
+                        onClick={handleDeleteAllProducts}
+                        disabled={loadingAction === 'CLEAR_PRODUCTS'}
+                        className="bg-white border-2 border-red-100 hover:border-red-500 p-8 rounded-[2.5rem] transition-all group flex flex-col items-center gap-4"
+                      >
+                         <div className="p-4 bg-red-50 text-red-500 rounded-2xl group-hover:bg-red-500 group-hover:text-white transition-all">
+                            {loadingAction === 'CLEAR_PRODUCTS' ? <Loader2 className="animate-spin" /> : <Eraser size={32} />}
+                         </div>
+                         <div className="text-center">
+                            <span className="block font-black text-red-700">حذف كافة المنتجات</span>
+                            <span className="text-[10px] text-red-300 font-bold">سيتم مسح جميع المنتجات من كافة المتاجر</span>
+                         </div>
+                      </button>
+
+                      <button 
+                        onClick={handleDeleteAllOrders}
+                        disabled={loadingAction === 'CLEAR_ORDERS'}
+                        className="bg-white border-2 border-red-100 hover:border-red-500 p-8 rounded-[2.5rem] transition-all group flex flex-col items-center gap-4"
+                      >
+                         <div className="p-4 bg-red-50 text-red-500 rounded-2xl group-hover:bg-red-500 group-hover:text-white transition-all">
+                            {loadingAction === 'CLEAR_ORDERS' ? <Loader2 className="animate-spin" /> : <Trash2 size={32} />}
+                         </div>
+                         <div className="text-center">
+                            <span className="block font-black text-red-700">مسح سجل الطلبات</span>
+                            <span className="text-[10px] text-red-300 font-bold">سيتم تصفير سجل الطلبيات القديمة بالكامل</span>
+                         </div>
+                      </button>
+                   </div>
+                </div>
              </div>
            )}
 
-           {/* باقي التبويبات تتبع نفس النمط السابق */}
            {activeTab === 'CUSTOMERS' && (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
                {getFilteredData().map((c: any) => (
-                 <div key={c.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 flex items-center gap-5">
-                   <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600"><Users size={28} /></div>
-                   <div className="flex-1">
-                     <h4 className="font-black text-slate-800">{c.name}</h4>
-                     <p className="text-xs text-slate-400 font-bold">{c.phone}</p>
+                 <div key={c.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 flex items-center gap-5 relative group overflow-hidden">
+                   <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 shrink-0">
+                      {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover rounded-2xl" /> : <Users size={28} />}
                    </div>
-                   <button onClick={() => handleDelete('customers', c.id)} className="p-3 text-slate-300 hover:text-red-500 transition-all"><Trash2 size={20} /></button>
+                   <div className="flex-1 min-w-0">
+                     <h4 className="font-black text-slate-800 truncate">{c.name}</h4>
+                     <p className="text-xs text-slate-400 font-bold">{c.phone || 'بدون هاتف'}</p>
+                   </div>
+                   <button 
+                    onClick={() => handleDelete('customers', c.id)} 
+                    disabled={loadingAction === `DELETE_${c.id}`}
+                    className="p-3 text-slate-300 hover:text-red-500 transition-all active:scale-90 shrink-0"
+                   >
+                     {loadingAction === `DELETE_${c.id}` ? <Loader2 className="animate-spin w-5 h-5" /> : <Trash2 size={20} />}
+                   </button>
                  </div>
                ))}
              </div>
            )}
-           {/* ... المتاجر، الموصلين، والطلبيات ... */}
+
+           {activeTab === 'STORES' && (
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
+               {getFilteredData().map((s: any) => (
+                 <div key={s.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 flex items-center gap-5 relative overflow-hidden">
+                   <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-orange-600 shrink-0">
+                      {s.image ? <img src={s.image} className="w-full h-full object-cover rounded-2xl" /> : <Store size={28} />}
+                   </div>
+                   <div className="flex-1 min-w-0">
+                     <h4 className="font-black text-slate-800 truncate">{s.name}</h4>
+                     <div className="flex items-center gap-1"><Star size={10} className="text-yellow-400 fill-current"/><span className="text-[10px] font-bold text-slate-400">{s.rating?.toFixed(1) || '0.0'}</span></div>
+                   </div>
+                   <button onClick={() => handleDelete('stores', s.id)} className="p-3 text-slate-300 hover:text-red-500 transition-all shrink-0"><Trash2 size={20} /></button>
+                 </div>
+               ))}
+             </div>
+           )}
+
+           {activeTab === 'DRIVERS' && (
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
+               {getFilteredData().map((d: any) => (
+                 <div key={d.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 flex items-center gap-5 relative overflow-hidden">
+                   <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 shrink-0">
+                      {d.avatar ? <img src={d.avatar} className="w-full h-full object-cover rounded-2xl" /> : <Bike size={28} />}
+                   </div>
+                   <div className="flex-1 min-w-0">
+                     <h4 className="font-black text-slate-800 truncate">{d.name}</h4>
+                     <p className="text-xs text-slate-400 font-bold">{d.phone || 'بدون هاتف'}</p>
+                   </div>
+                   <button onClick={() => handleDelete('drivers', d.id)} className="p-3 text-slate-300 hover:text-red-500 transition-all shrink-0"><Trash2 size={20} /></button>
+                 </div>
+               ))}
+             </div>
+           )}
+
+           {activeTab === 'ORDERS' && (
+             <div className="space-y-4 animate-fade-in-up">
+               {getFilteredData().map((o: any) => (
+                 <div key={o.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 flex items-center justify-between group">
+                    <div className="flex items-center gap-5">
+                       <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 font-black text-xs">#{o.id.slice(-4)}</div>
+                       <div>
+                          <h4 className="font-black text-slate-800 text-sm">{o.customerName} → {o.storeName}</h4>
+                          <p className="text-[10px] text-slate-400 font-bold">{formatCurrency(o.totalPrice)} • {o.status}</p>
+                       </div>
+                    </div>
+                    <button onClick={() => handleDelete('orders', o.id)} className="p-3 text-slate-200 hover:text-red-500 transition-all"><Trash2 size={20}/></button>
+                 </div>
+               ))}
+             </div>
+           )}
         </div>
       </main>
     </div>

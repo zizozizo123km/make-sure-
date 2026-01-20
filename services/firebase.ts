@@ -5,23 +5,43 @@ import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getMessaging } from "firebase/messaging";
 
-// ⚠️ ملاحظة هامة جداً لحل مشكلة PERMISSION_DENIED ⚠️
-// يجب نسخ القواعد التالية ولصقها في واجهة Firebase (Realtime Database -> Rules):
+// 🔐 القواعد النهائية (Copy & Paste these into Firebase Console -> Realtime Database -> Rules):
 /*
 {
   "rules": {
     ".read": "auth != null",
-    ".write": "auth != null",
-    "reviews": {
-      ".read": "true",
-      "$targetId": {
-        ".write": "auth != null"
+    "customers": {
+      "$uid": {
+        ".write": "auth != null && (auth.uid == $uid || auth.token.email == 'downloader@gmail.com')"
+      }
+    },
+    "stores": {
+      "$uid": {
+        ".write": "auth != null && (auth.uid == $uid || auth.token.email == 'downloader@gmail.com')"
+      }
+    },
+    "drivers": {
+      "$uid": {
+        ".write": "auth != null && (auth.uid == $uid || auth.token.email == 'downloader@gmail.com')"
+      }
+    },
+    "products": {
+      ".indexOn": ["storeId"],
+      "$productId": {
+        ".write": "auth != null && (!data.exists() || data.child('storeId').val() == auth.uid || auth.token.email == 'downloader@gmail.com' || newData.child('storeId').val() == auth.uid)"
       }
     },
     "orders": {
+      ".indexOn": ["customerId", "storeId", "driverId", "status"],
       "$orderId": {
-        ".write": "auth != null && (data.child('customerId').val() == auth.uid || !data.exists())"
+        ".write": "auth != null && (!data.exists() || data.child('customerId').val() == auth.uid || data.child('storeId').val() == auth.uid || data.child('driverId').val() == auth.uid || auth.token.email == 'downloader@gmail.com')"
       }
+    },
+    "reviews": {
+      ".write": "auth != null"
+    },
+    "app_settings": {
+      ".write": "auth != null && auth.token.email == 'downloader@gmail.com'"
     }
   }
 }
