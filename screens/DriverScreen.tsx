@@ -125,13 +125,18 @@ export const DriverScreen: React.FC<{onLogout: () => void, userName: string}> = 
 
   const handleAcceptOrder = async (orderId: string) => {
       if (!currentDriverId) return;
-      await update(ref(db, `orders/${orderId}`), {
-          status: OrderStatus.ACCEPTED_BY_DRIVER,
-          driverId: currentDriverId,
-          driverName: driverProfile?.name || userName,
-          driverPhone: driverProfile?.phone || ''
-      });
-      setActiveTab('ACTIVE');
+      try {
+        await update(ref(db, `orders/${orderId}`), {
+            status: OrderStatus.ACCEPTED_BY_DRIVER,
+            driverId: currentDriverId,
+            driverName: driverProfile?.name || userName,
+            driverPhone: driverProfile?.phone || ''
+        });
+        setActiveTab('ACTIVE');
+      } catch (error) {
+        console.error("Failed to accept order:", error);
+        alert("فشل قبول الطلب. قد يكون الطلب تم قبوله من قبل موصل آخر. حاول تحديث الصفحة.");
+      }
   };
 
   const handlePickUpOrder = async () => {

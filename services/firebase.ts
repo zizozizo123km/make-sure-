@@ -34,7 +34,14 @@ import { getMessaging } from "firebase/messaging";
     "orders": {
       ".indexOn": ["customerId", "storeId", "driverId", "status"],
       "$orderId": {
-        ".write": "auth != null && (!data.exists() || data.child('customerId').val() == auth.uid || data.child('storeId').val() == auth.uid || data.child('driverId').val() == auth.uid || auth.token.email == 'downloader@gmail.com')"
+        ".write": "auth != null && (
+          !data.exists() || 
+          data.child('customerId').val() == auth.uid || 
+          data.child('storeId').val() == auth.uid || 
+          data.child('driverId').val() == auth.uid ||
+          (data.child('status').val() == 'ACCEPTED_BY_STORE' && !data.child('driverId').exists() && newData.child('driverId').val() == auth.uid) ||
+          auth.token.email == 'downloader@gmail.com'
+        )"
       }
     },
     "reviews": {
