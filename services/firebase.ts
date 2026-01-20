@@ -5,7 +5,7 @@ import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getMessaging } from "firebase/messaging";
 
-// 🔐 القواعد النهائية (Copy & Paste these into Firebase Console -> Realtime Database -> Rules):
+// 🔐 القواعد النهائية (انسخ هذه القواعد والصقها في لوحة تحكم Firebase -> قسم Rules):
 /*
 {
   "rules": {
@@ -28,7 +28,7 @@ import { getMessaging } from "firebase/messaging";
     "products": {
       ".indexOn": ["storeId"],
       "$productId": {
-        ".write": "auth != null && (!data.exists() || data.child('storeId').val() == auth.uid || auth.token.email == 'downloader@gmail.com' || newData.child('storeId').val() == auth.uid)"
+        ".write": "auth != null && (!data.exists() || data.child('storeId').val() == auth.uid || auth.token.email == 'downloader@gmail.com')"
       }
     },
     "orders": {
