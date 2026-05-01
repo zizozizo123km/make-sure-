@@ -1,0 +1,12 @@
+{
+  "name": "Kimo App | كيمو",
+  "short_name": "كيمو",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#f97316",
+  "icons": [
+    { "src": "https://res.cloudinary.com/dkqxgwjnr/image/upload/v1710000000/kimo_logo_192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "https://res.cloudinary.com/dkqxgwjnr/image/upload/v1710000000/kimo_logo_512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
